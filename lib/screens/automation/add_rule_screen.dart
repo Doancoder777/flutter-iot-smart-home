@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/automation_provider.dart';
 import '../../models/automation_rule.dart' as automation_rule;
 import 'widgets/condition_builder.dart';
-import 'widgets/action_builder.dart';
+import 'widgets/actions_builder.dart';
 
 /// Màn hình thêm/chỉnh sửa quy tắc tự động
 class AddRuleScreen extends StatefulWidget {
@@ -19,7 +19,8 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   Map<String, dynamic> _condition = {};
-  Map<String, dynamic> _action = {};
+  List<Map<String, dynamic>> _actions =
+      []; // Đổi từ _action sang _actions (List)
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   bool _useTime = false;
@@ -49,14 +50,17 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
       };
     }
 
-    // Load action
+    // Load actions (multiple devices)
     if (rule.actions.isNotEmpty) {
-      final action = rule.actions.first;
-      _action = {
-        'device': action.deviceId,
-        'action': action.action,
-        'value': action.value,
-      };
+      _actions = rule.actions.map((action) {
+        return {
+          'device': action.deviceId,
+          'action': action.action,
+          'value': action.value,
+          'endAction': action.endAction,
+          'endValue': action.endValue,
+        };
+      }).toList();
     }
 
     // Load time
@@ -181,11 +185,14 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Hành động
-            ActionBuilder(
-              onActionChanged: (action) {
+            // Hành động (nhiều thiết bị)
+            ActionsBuilder(
+              initialActions: _isEditMode && _actions.isNotEmpty
+                  ? _actions
+                  : null,
+              onActionsChanged: (actions) {
                 setState(() {
-                  _action = action;
+                  _actions = actions;
                 });
               },
             ),
@@ -210,20 +217,22 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
 
   void _handleAddRule() {
     if (_formKey.currentState!.validate()) {
-      if (_action.isEmpty) {
+      // Validate: phải có ít nhất 1 action
+      if (_actions.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Vui lòng thiết lập hành động'),
+            content: Text('⚠️ Vui lòng thêm ít nhất một thiết bị'),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
 
+      // Validate time nếu dùng
       if (_useTime && (_startTime == null || _endTime == null)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Vui lòng chọn thời gian hoạt động'),
+            content: Text('⚠️ Vui lòng chọn thời gian hoạt động'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -236,17 +245,6 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
         listen: false,
       );
 
-      // Kiểm tra dữ liệu action
-      if (_action.isEmpty || _action['device'] == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Vui lòng chọn hành động'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
       // Chuyển đổi dữ liệu từ widgets sang format của model
       final conditionData = _condition.isEmpty || _condition['noSensor'] == true
           ? null
@@ -256,11 +254,16 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
               'value': _condition['value'],
             };
 
-      final actionData = {
-        'deviceId': _action['device'],
-        'action': _action['action'] ?? 'on',
-        'value': _action['value'],
-      };
+      // Chuyển đổi List<Map> sang List<Action>
+      final actionsData = _actions.map((actionMap) {
+        return {
+          'deviceId': actionMap['device'],
+          'action': actionMap['action'] ?? 'on',
+          'value': actionMap['value'],
+          'endAction': actionMap['endAction'],
+          'endValue': actionMap['endValue'],
+        };
+      }).toList();
 
       // Tạo/cập nhật rule object
       final rule = automation_rule.AutomationRule(
@@ -272,7 +275,9 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
         conditions: conditionData != null
             ? [automation_rule.Condition.fromJson(conditionData)]
             : [],
-        actions: [automation_rule.Action.fromJson(actionData)],
+        actions: actionsData
+            .map((a) => automation_rule.Action.fromJson(a))
+            .toList(),
         createdAt: _isEditMode ? widget.editRule!.createdAt : DateTime.now(),
         lastTriggered: _isEditMode ? widget.editRule!.lastTriggered : null,
         startTime: _useTime && _startTime != null

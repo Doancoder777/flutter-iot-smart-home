@@ -2,6 +2,7 @@ import 'dart:async';
 import '../providers/automation_provider.dart';
 import '../providers/device_provider.dart';
 import '../models/sensor_data.dart';
+import '../models/device_model.dart';
 
 /// Service để xử lý logic automation
 class AutomationService {
@@ -67,11 +68,10 @@ class AutomationService {
         }
         _ruleActiveState[ruleId] = true;
       } else if (!isTriggered && wasActive) {
-        // Rule vừa inactive → Có thể tắt thiết bị (tùy logic)
-        print('🔴 Rule "${rule.name}" deactivated');
-        // Nếu muốn tự động tắt khi hết time:
+        // Rule vừa inactive → Thực thi END actions
+        print('🔴 Rule "${rule.name}" deactivated - executing end actions');
         for (var action in rule.actions) {
-          _executeOffAction(action.deviceId, action);
+          _executeEndAction(action.deviceId, action);
         }
         _ruleActiveState[ruleId] = false;
       }
@@ -86,13 +86,52 @@ class AutomationService {
         return;
       }
 
-      if (action.value != null) {
-        // Servo device (góc)
-        deviceProvider.updateServoValue(deviceId, action.value as int);
-        print('🎬 Automation: Set $deviceId to angle ${action.value}°');
+      // Dispatch based on actual device type
+      if (device.isFan) {
+        // Fan actions: support presets (action.action = 'low'/'medium'/'high'/'off')
+        // or numeric value in percent (0-100) or raw PWM (0-255)
+        if (action.action == 'off' || action.action == 'turn_off') {
+          deviceProvider.setFanSpeed(deviceId, 0);
+          print('🎬 Automation: Fan $deviceId -> OFF');
+        } else if (action.action == 'low' || action.action == 'low_speed') {
+          deviceProvider.setFanSpeed(deviceId, Device.fanSpeedLow);
+          print('🎬 Automation: Fan $deviceId -> LOW');
+        } else if (action.action == 'medium' ||
+            action.action == 'medium_speed') {
+          deviceProvider.setFanSpeed(deviceId, Device.fanSpeedMedium);
+          print('🎬 Automation: Fan $deviceId -> MEDIUM');
+        } else if (action.action == 'high' || action.action == 'high_speed') {
+          deviceProvider.setFanSpeed(deviceId, Device.fanSpeedHigh);
+          print('🎬 Automation: Fan $deviceId -> HIGH');
+        } else if (action.value != null) {
+          final raw = action.value as int;
+          int pwm;
+          if (raw >= 0 && raw <= 100) {
+            // value is percent -> map to 0-255
+            pwm = ((raw / 100.0) * 255).round();
+          } else {
+            // assume already PWM 0-255
+            pwm = raw.clamp(0, 255);
+          }
+          deviceProvider.setFanSpeed(deviceId, pwm);
+          print(
+            '🎬 Automation: Fan $deviceId -> PWM $pwm (from ${action.value})',
+          );
+        }
+      } else if (device.isServo) {
+        // Servo expects an integer angle
+        if (action.value != null) {
+          deviceProvider.updateServoValue(deviceId, action.value as int);
+          print('🎬 Automation: Set $deviceId to angle ${action.value}°');
+        } else {
+          print('⚠️ Automation: No value provided for servo $deviceId');
+        }
       } else {
-        // Relay device (on/off)
-        final isOn = action.action == 'on' || action.action == 'turn_on';
+        // Fallback/relay: interpret action.action
+        final isOn =
+            (action.action == 'on' ||
+            action.action == 'turn_on' ||
+            action.action == '1');
         deviceProvider.updateDeviceState(deviceId, isOn);
         print('🎬 Automation: Turn ${isOn ? 'ON' : 'OFF'} $deviceId');
       }
@@ -101,7 +140,7 @@ class AutomationService {
     }
   }
 
-  void _executeOffAction(String deviceId, dynamic action) {
+  void _executeEndAction(String deviceId, dynamic action) {
     try {
       final device = deviceProvider.getDeviceById(deviceId);
       if (device == null) {
@@ -109,18 +148,47 @@ class AutomationService {
         return;
       }
 
-      // Tắt thiết bị khi rule kết thúc
-      if (action.value != null) {
-        // Servo device - trở về góc 0
-        deviceProvider.updateServoValue(deviceId, 0);
-        print('🎬 Automation: Reset $deviceId to 0°');
+      // Nếu có endAction được định nghĩa, thực thi nó
+      if (action.endAction != null && action.endAction.isNotEmpty) {
+        print('🎬 Executing END action for $deviceId: ${action.endAction}');
+
+        if (device.isFan) {
+          // Fan end actions: presets hoặc off
+          if (action.endAction == 'off' || action.endAction == 'turn_off') {
+            deviceProvider.setFanSpeed(deviceId, 0);
+          } else if (action.endAction == 'low') {
+            deviceProvider.setFanSpeed(deviceId, Device.fanSpeedLow);
+          } else if (action.endAction == 'medium') {
+            deviceProvider.setFanSpeed(deviceId, Device.fanSpeedMedium);
+          } else if (action.endAction == 'high') {
+            deviceProvider.setFanSpeed(deviceId, Device.fanSpeedHigh);
+          }
+          print('🎬 Automation END: Fan $deviceId -> ${action.endAction}');
+        } else if (device.isServo) {
+          // Servo end action: set angle
+          final angle = action.endValue ?? 0;
+          deviceProvider.updateServoValue(deviceId, angle);
+          print('🎬 Automation END: Servo $deviceId -> ${angle}°');
+        } else {
+          // Relay end action: on/off
+          final isOn =
+              (action.endAction == 'on' || action.endAction == 'turn_on');
+          deviceProvider.updateDeviceState(deviceId, isOn);
+          print('🎬 Automation END: Turn ${isOn ? 'ON' : 'OFF'} $deviceId');
+        }
       } else {
-        // Relay device - tắt
-        deviceProvider.updateDeviceState(deviceId, false);
-        print('🎬 Automation: Turn OFF $deviceId (rule ended)');
+        // Không có endAction → Tắt thiết bị (default behavior)
+        print('🎬 No END action defined, turning OFF $deviceId');
+        if (device.isFan) {
+          deviceProvider.setFanSpeed(deviceId, 0);
+        } else if (device.isServo) {
+          deviceProvider.updateServoValue(deviceId, 0);
+        } else {
+          deviceProvider.updateDeviceState(deviceId, false);
+        }
       }
     } catch (e) {
-      print('❌ Error executing OFF action: $e');
+      print('❌ Error executing END action: $e');
     }
   }
 

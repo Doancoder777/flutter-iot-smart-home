@@ -106,35 +106,103 @@ class SettingsScreen extends StatelessWidget {
                 leading: Icon(Icons.router, color: AppColors.primary),
                 title: Text('Cấu hình MQTT'),
                 subtitle: Text('Thiết lập broker, port, tài khoản MQTT'),
-                trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.help_outline, size: 20),
+                      onPressed: () => _showMqttGuideDialog(context),
+                      tooltip: 'Hướng dẫn',
+                    ),
+                    Icon(Icons.arrow_forward_ios, size: 16),
+                  ],
+                ),
                 onTap: () => _showMqttConfigDialog(context),
               ),
               Divider(),
               Consumer<MqttProvider>(
                 builder: (context, mqttProvider, _) {
-                  return ListTile(
-                    leading: Icon(
-                      mqttProvider.isConnected ? Icons.wifi : Icons.wifi_off,
-                      color: mqttProvider.isConnected
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                    title: Text(
-                      mqttProvider.isConnected ? 'Đã kết nối' : 'Chưa kết nối',
-                    ),
-                    subtitle: Text(mqttProvider.connectionStatus),
-                    trailing: mqttProvider.isConnected
-                        ? IconButton(
-                            icon: Icon(Icons.refresh),
-                            onPressed: () async {
-                              mqttProvider.disconnect();
-                              await mqttProvider.connect();
-                            },
-                          )
-                        : IconButton(
-                            icon: Icon(Icons.play_arrow, color: Colors.green),
-                            onPressed: () => mqttProvider.connect(),
+                  final currentConfig = mqttProvider.currentConfig;
+                  final brokerInfo = currentConfig != null
+                      ? '${currentConfig.broker}:${currentConfig.port}'
+                      : 'Chưa cấu hình';
+
+                  return Column(
+                    children: [
+                      // Broker info
+                      if (currentConfig != null)
+                        ListTile(
+                          leading: Icon(Icons.dns, color: Colors.grey[600]),
+                          title: Text('Broker hiện tại'),
+                          subtitle: Text(
+                            brokerInfo,
+                            style: TextStyle(fontFamily: 'monospace'),
                           ),
+                          trailing: Chip(
+                            label: Text(
+                              'Đã cấu hình',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                            backgroundColor: Colors.green[100],
+                            padding: EdgeInsets.zero,
+                          ),
+                        )
+                      else
+                        ListTile(
+                          leading: Icon(
+                            Icons.error_outline,
+                            color: Colors.red[600],
+                          ),
+                          title: Text('Broker hiện tại'),
+                          subtitle: Text(
+                            'Chưa cấu hình',
+                            style: TextStyle(color: Colors.red[700]),
+                          ),
+                          trailing: Chip(
+                            label: Text(
+                              'Chưa setup',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                            backgroundColor: Colors.red[100],
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
+
+                      if (currentConfig != null) Divider(),
+
+                      // Connection status
+                      ListTile(
+                        leading: Icon(
+                          mqttProvider.isConnected
+                              ? Icons.wifi
+                              : Icons.wifi_off,
+                          color: mqttProvider.isConnected
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                        title: Text(
+                          mqttProvider.isConnected
+                              ? 'Đã kết nối'
+                              : 'Chưa kết nối',
+                        ),
+                        subtitle: Text(mqttProvider.connectionStatus),
+                        trailing: mqttProvider.isConnected
+                            ? IconButton(
+                                icon: Icon(Icons.refresh),
+                                onPressed: () async {
+                                  mqttProvider.disconnect();
+                                  await mqttProvider.connect();
+                                },
+                              )
+                            : IconButton(
+                                icon: Icon(
+                                  Icons.play_arrow,
+                                  color: Colors.green,
+                                ),
+                                onPressed: () => mqttProvider.connect(),
+                              ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -705,7 +773,144 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  // 🔧 MQTT CONFIGURATION DIALOG
+  // � MQTT GUIDE DIALOG
+  void _showMqttGuideDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.help_outline, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text('Hướng dẫn cấu hình MQTT'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '🎯 Tại sao cần cấu hình MQTT?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'MQTT là cầu nối giữa app và thiết bị IoT của bạn. '
+                'Bạn cần cấu hình MQTT broker để app có thể điều khiển thiết bị.',
+                style: TextStyle(fontSize: 13),
+              ),
+              SizedBox(height: 16),
+
+              Text(
+                '✅ Khuyến nghị: HiveMQ Cloud',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '1. Truy cập: hivemq.com/mqtt-cloud-broker\n'
+                '2. Đăng ký Free Tier (miễn phí)\n'
+                '3. Tạo cluster → Lấy URL và credentials\n'
+                '4. Nhập vào app và Lưu',
+                style: TextStyle(fontSize: 13),
+              ),
+              SizedBox(height: 16),
+
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          size: 16,
+                          color: Colors.blue[700],
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Ví dụ cấu hình:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.blue[900],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Broker: abc123.s1.eu.hivemq.cloud\n'
+                      'Port: 8883\n'
+                      'Username: your-user\n'
+                      'Password: ••••••••\n'
+                      'SSL/TLS: Bật',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: Colors.blue[800],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 16),
+
+              Text(
+                '📱 Topic format cho thiết bị:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'smart_home/devices/<room>/<device_id>',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Colors.grey[700],
+                ),
+              ),
+              SizedBox(height: 16),
+
+              Text(
+                'Chi tiết đầy đủ xem file MQTT_SETUP_GUIDE.md',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Đóng'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _showMqttConfigDialog(context);
+            },
+            icon: Icon(Icons.settings, size: 18),
+            label: Text('Cấu hình ngay'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // �🔧 MQTT CONFIGURATION DIALOG
   void _showMqttConfigDialog(BuildContext context) async {
     // Get current user ID
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -725,10 +930,10 @@ class SettingsScreen extends StatelessWidget {
 
     // Controllers for MQTT config with existing values
     final brokerController = TextEditingController(
-      text: existingConfig?['broker'] ?? 'broker.hivemq.com',
+      text: existingConfig?['broker'] ?? '',
     );
     final portController = TextEditingController(
-      text: (existingConfig?['port'] ?? 8883).toString(),
+      text: existingConfig?['port']?.toString() ?? '1883',
     );
     final usernameController = TextEditingController(
       text: existingConfig?['username'] ?? '',
@@ -736,6 +941,7 @@ class SettingsScreen extends StatelessWidget {
     final passwordController = TextEditingController(
       text: existingConfig?['password'] ?? '',
     );
+    bool useSsl = existingConfig?['useSsl'] ?? false;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -792,6 +998,71 @@ class SettingsScreen extends StatelessWidget {
                 obscureText: true,
               ),
               SizedBox(height: 16),
+
+              // SSL Toggle
+              StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return SwitchListTile(
+                    title: Text('Sử dụng SSL/TLS'),
+                    subtitle: Text('Port 8883 cho SSL, 1883 cho không SSL'),
+                    value: useSsl,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        useSsl = value;
+                        // Auto-update port based on SSL
+                        if (value && portController.text == '1883') {
+                          portController.text = '8883';
+                        } else if (!value && portController.text == '8883') {
+                          portController.text = '1883';
+                        }
+                      });
+                    },
+                    contentPadding: EdgeInsets.zero,
+                  );
+                },
+              ),
+              SizedBox(height: 16),
+
+              // Examples section
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.blue[700],
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Ví dụ cấu hình:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[900],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '• Public broker: broker.hivemq.com:1883 (không SSL)\n'
+                      '• HiveMQ Cloud: <your-cluster>.hivemq.cloud:8883 (SSL)\n'
+                      '• Eclipse: mqtt.eclipseprojects.io:1883',
+                      style: TextStyle(fontSize: 12, color: Colors.blue[800]),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 16),
+
               // Test connection button
               SizedBox(
                 width: double.infinity,
@@ -904,7 +1175,7 @@ class SettingsScreen extends StatelessWidget {
                   'port': port,
                   'username': usernameController.text.trim(),
                   'password': passwordController.text.trim(),
-                  'useSsl': true,
+                  'useSsl': useSsl,
                 };
 
                 // Save to local storage

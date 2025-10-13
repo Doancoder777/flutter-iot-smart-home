@@ -117,7 +117,87 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Alert Banner
+            // MQTT Config Warning Banner
+            Consumer<MqttProvider>(
+              builder: (context, mqtt, _) {
+                final currentConfig = mqtt.currentConfig;
+
+                // Debug log
+                print(
+                  '🏠 Home Screen - currentConfig: ${currentConfig?.broker ?? "null"}',
+                );
+
+                // Hiển thị warning nếu CHƯA CẤU HÌNH
+                if (currentConfig == null) {
+                  return Container(
+                    margin: EdgeInsets.only(bottom: 16),
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red[300]!, width: 2),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.red[700],
+                          size: 32,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '⚠️ Chưa cấu hình MQTT',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Colors.red[900],
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Vui lòng cấu hình MQTT broker để kết nối với thiết bị IoT của bạn.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.red[800],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          children: [
+                            IconButton(
+                              onPressed: () {
+                                Navigator.pushNamed(context, '/settings');
+                              },
+                              icon: Icon(
+                                Icons.settings,
+                                color: Colors.red[700],
+                              ),
+                              tooltip: 'Cấu hình ngay',
+                            ),
+                            Text(
+                              'Cài đặt',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return SizedBox.shrink();
+              },
+            ),
+
+            // Alert Banner (Gas/Dust)
             Consumer<SensorProvider>(
               builder: (context, sensor, _) {
                 final gasValue = sensor.currentData.gas;

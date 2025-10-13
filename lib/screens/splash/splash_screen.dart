@@ -42,9 +42,16 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _initializeApp() async {
-    // Connect MQTT
+    // Kiểm tra MQTT config
     final mqttProvider = Provider.of<MqttProvider>(context, listen: false);
-    await mqttProvider.connect();
+
+    // Chỉ connect nếu user đã có config
+    if (mqttProvider.currentConfig != null) {
+      print('✅ MQTT config found - Auto connecting...');
+      await mqttProvider.connect();
+    } else {
+      print('⚠️ No MQTT config - Skip auto-connect');
+    }
 
     // Wait minimum 2 seconds for splash
     await Future.delayed(Duration(seconds: 2));

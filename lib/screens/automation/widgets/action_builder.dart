@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../providers/device_provider.dart';
 
 /// Widget xây dựng hành động cho quy tắc tự động
 class ActionBuilder extends StatefulWidget {
@@ -17,27 +19,27 @@ class ActionBuilder extends StatefulWidget {
 
 class _ActionBuilderState extends State<ActionBuilder> {
   String _actionType = 'device';
-  String _device = 'pump';
+  String? _deviceId; // Device ID từ user's devices
   String _action = 'on';
   int _servoAngle = 90;
-
-  final List<Map<String, String>> _devices = [
-    {'id': 'pump', 'name': 'Máy bơm', 'type': 'relay'},
-    {'id': 'light_living', 'name': 'Đèn phòng khách', 'type': 'relay'},
-    {'id': 'light_yard', 'name': 'Đèn sân', 'type': 'relay'},
-    {'id': 'mist_maker', 'name': 'Máy phun sương', 'type': 'relay'},
-    {'id': 'roof', 'name': 'Mái che', 'type': 'servo'},
-    {'id': 'gate', 'name': 'Cổng', 'type': 'servo'},
-    {'id': 'buzzer', 'name': 'Còi', 'type': 'relay'},
-  ];
+  String _fanPreset = 'medium'; // Preset cho fan: off/low/medium/high
 
   @override
   void initState() {
     super.initState();
     if (widget.initialAction != null) {
-      _device = widget.initialAction!['device'] ?? 'pump';
+      _deviceId = widget.initialAction!['device'];
       _action = widget.initialAction!['action'] ?? 'on';
-      _servoAngle = widget.initialAction!['value'] ?? 90;
+
+      // Load giá trị tùy theo loại action
+      if (widget.initialAction!['value'] != null) {
+        final value = widget.initialAction!['value'];
+        if (value is int) {
+          _servoAngle = value;
+        } else if (value is String) {
+          _fanPreset = value; // 'low', 'medium', 'high', 'off'
+        }
+      }
     }
     // Gọi sau khi build xong
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -46,19 +48,66 @@ class _ActionBuilderState extends State<ActionBuilder> {
   }
 
   void _notifyChange() {
-    final deviceInfo = _devices.firstWhere((d) => d['id'] == _device);
-    widget.onActionChanged({
+    if (_deviceId == null) return;
+
+    final deviceProvider = context.read<DeviceProvider>();
+    final device = deviceProvider.devices.firstWhere((d) => d.id == _deviceId);
+
+    // Xác định action data tùy device type
+    Map<String, dynamic> actionData = {
       'type': _actionType,
-      'device': _device,
+      'device': _deviceId,
       'action': _action,
-      'value': deviceInfo['type'] == 'servo' ? _servoAngle : null,
-    });
+    };
+
+    if (device.isServo) {
+      actionData['action'] = 'set_value';
+      actionData['value'] = _servoAngle;
+    } else if (device.isFan) {
+      // Fan có thể dùng preset hoặc percent
+      if (_fanPreset == 'off') {
+        actionData['action'] = 'off';
+      } else {
+        actionData['action'] = _fanPreset; // 'low'/'medium'/'high'
+      }
+    } else {
+      // Relay: on/off
+      actionData['action'] = _action; // 'on' hoặc 'off'
+    }
+
+    widget.onActionChanged(actionData);
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedDevice = _devices.firstWhere((d) => d['id'] == _device);
-    final isServo = selectedDevice['type'] == 'servo';
+    final deviceProvider = context.watch<DeviceProvider>();
+    final devices = deviceProvider.devices;
+
+    // Nếu chưa có device được chọn, chọn device đầu tiên
+    if (_deviceId == null && devices.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _deviceId = devices.first.id;
+          _notifyChange();
+        });
+      });
+    }
+
+    if (devices.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Không có thiết bị nào. Vui lòng thêm thiết bị trước.'),
+        ),
+      );
+    }
+
+    final selectedDevice = _deviceId != null
+        ? devices.firstWhere(
+            (d) => d.id == _deviceId,
+            orElse: () => devices.first,
+          )
+        : devices.first;
 
     return Card(
       child: Padding(
@@ -72,38 +121,63 @@ class _ActionBuilderState extends State<ActionBuilder> {
             ),
             const SizedBox(height: 16),
 
-            // Chọn thiết bị
+            // Chọn thiết bị (từ danh sách thực của user)
             DropdownButtonFormField<String>(
-              value: _device,
+              value: _deviceId ?? devices.first.id,
               decoration: const InputDecoration(
                 labelText: 'Thiết bị',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.device_hub),
               ),
-              items: _devices.map((device) {
+              items: devices.map((device) {
                 return DropdownMenuItem(
-                  value: device['id'],
-                  child: Text(device['name']!),
+                  value: device.id,
+                  child: Row(
+                    children: [
+                      Icon(
+                        device.isFan
+                            ? Icons.air
+                            : device.isServo
+                            ? Icons.zoom_out_map
+                            : Icons.power_settings_new,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(device.name),
+                    ],
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
                 setState(() {
-                  _device = value!;
+                  _deviceId = value!;
                   _notifyChange();
                 });
               },
             ),
             const SizedBox(height: 16),
 
-            // Hành động
-            if (isServo) ...[
-              // Servo: Slider góc
-              Text('Góc: $_servoAngle°', style: const TextStyle(fontSize: 14)),
+            // Hành động tùy theo loại thiết bị
+            if (selectedDevice.isServo) ...[
+              // SERVO: Slider góc 0-180°
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Góc quay:', style: TextStyle(fontSize: 14)),
+                  Text(
+                    '$_servoAngle°',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
               Slider(
                 value: _servoAngle.toDouble(),
                 min: 0,
                 max: 180,
-                divisions: 18,
+                divisions: 36,
                 label: '$_servoAngle°',
                 onChanged: (value) {
                   setState(() {
@@ -112,8 +186,31 @@ class _ActionBuilderState extends State<ActionBuilder> {
                   });
                 },
               ),
+              // Preset buttons cho servo
+              Wrap(
+                spacing: 8,
+                children: [
+                  _buildPresetButton('Đóng', 0, Icons.close),
+                  _buildPresetButton('Giữa', 90, Icons.swap_horiz),
+                  _buildPresetButton('Mở', 180, Icons.open_in_full),
+                ],
+              ),
+            ] else if (selectedDevice.isFan) ...[
+              // FAN: Preset buttons (Tắt/Nhẹ/Khá/Mạnh)
+              const Text('Tốc độ quạt:', style: TextStyle(fontSize: 14)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildFanPresetButton('Tắt', 'off', Icons.power_settings_new),
+                  _buildFanPresetButton('Nhẹ', 'low', Icons.air),
+                  _buildFanPresetButton('Khá', 'medium', Icons.air),
+                  _buildFanPresetButton('Mạnh', 'high', Icons.air),
+                ],
+              ),
             ] else ...[
-              // Relay: Bật/Tắt
+              // RELAY: Bật/Tắt
               DropdownButtonFormField<String>(
                 value: _action,
                 decoration: const InputDecoration(
@@ -135,6 +232,42 @@ class _ActionBuilderState extends State<ActionBuilder> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPresetButton(String label, int angle, IconData icon) {
+    final isSelected = _servoAngle == angle;
+    return ElevatedButton.icon(
+      onPressed: () {
+        setState(() {
+          _servoAngle = angle;
+          _notifyChange();
+        });
+      },
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.blue : Colors.grey[200],
+        foregroundColor: isSelected ? Colors.white : Colors.black87,
+      ),
+    );
+  }
+
+  Widget _buildFanPresetButton(String label, String preset, IconData icon) {
+    final isSelected = _fanPreset == preset;
+    return ElevatedButton.icon(
+      onPressed: () {
+        setState(() {
+          _fanPreset = preset;
+          _notifyChange();
+        });
+      },
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.blue : Colors.grey[200],
+        foregroundColor: isSelected ? Colors.white : Colors.black87,
       ),
     );
   }

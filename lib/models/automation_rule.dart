@@ -123,20 +123,37 @@ class Condition {
 
 class Action {
   final String deviceId;
-  final String action; // 'turn_on', 'turn_off', 'set_value'
+  final String
+  action; // 'turn_on', 'turn_off', 'set_value', 'low', 'medium', 'high', 'off'
   final dynamic value;
+  final String? endAction; // Hành động khi kết thúc rule (optional)
+  final dynamic endValue; // Giá trị khi kết thúc rule (optional)
 
-  Action({required this.deviceId, required this.action, this.value});
+  Action({
+    required this.deviceId,
+    required this.action,
+    this.value,
+    this.endAction,
+    this.endValue,
+  });
 
   factory Action.fromJson(Map<String, dynamic> json) {
     return Action(
       deviceId: json['deviceId'],
       action: json['action'],
       value: json['value'],
+      endAction: json['endAction'],
+      endValue: json['endValue'],
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {'deviceId': deviceId, 'action': action, 'value': value};
+    return {
+      'deviceId': deviceId,
+      'action': action,
+      'value': value,
+      'endAction': endAction,
+      'endValue': endValue,
+    };
   }
 }

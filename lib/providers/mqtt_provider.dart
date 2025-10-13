@@ -49,6 +49,9 @@ class MqttProvider extends ChangeNotifier {
     } else {
       _currentConfig = null;
     }
+
+    // Notify UI về config changes
+    _safeNotify();
   }
 
   /// Load MQTT config for current user
@@ -57,6 +60,9 @@ class MqttProvider extends ChangeNotifier {
       _currentConfig = await _configService.loadUserMqttConfig(userId);
       print('📡 Loaded MQTT config for user: $userId');
       print('📡 Config: ${_currentConfig.toString()}');
+
+      // Notify listeners về config update
+      _safeNotify();
     } catch (e) {
       print('❌ Error loading MQTT config: $e');
     }
@@ -70,6 +76,9 @@ class MqttProvider extends ChangeNotifier {
 
       // Reload config
       await _loadUserMqttConfig(_currentUserId!);
+
+      // Notify UI về config mới (để banner biến mất)
+      _safeNotify();
 
       // Reconnect with new config
       await connect();
