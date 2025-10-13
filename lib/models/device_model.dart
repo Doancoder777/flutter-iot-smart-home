@@ -1,0 +1,249 @@
+class Device {
+  final String id;
+  final String name;
+  final DeviceType type;
+  bool state;
+  int? value; // For servo angles (0-180)
+  final String? icon;
+  final String? avatarPath; // 🎨 THÊM FIELD ẢNH AVATAR
+  final String? room;
+  final String? userId; // 👤 THÊM USER ID
+  final DateTime? lastUpdated;
+  final DateTime? createdAt; // 📅 THÊM THỜI GIAN TẠO
+  bool isPinned; // 📌 THÊM FIELD GHIM CHO ĐIỀU KHIỂN NHANH
+
+  Device({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.state = false,
+    this.value,
+    this.icon,
+    this.avatarPath, // 🎨 THÊM PARAMETER
+    this.room,
+    this.userId, // 👤 THÊM PARAMETER
+    this.lastUpdated,
+    this.createdAt,
+    this.isPinned = false, // 📌 THÊM PARAMETER VỚI DEFAULT FALSE
+  });
+
+  factory Device.fromJson(Map<String, dynamic> json) {
+    return Device(
+      id: json['id'],
+      name: json['name'],
+      type: DeviceType.values.firstWhere(
+        (e) => e.toString() == 'DeviceType.${json['type']}',
+        orElse: () => DeviceType.relay,
+      ),
+      state: json['state'] ?? false,
+      value: json['value'],
+      icon: json['icon'],
+      avatarPath: json['avatarPath'], // 🎨 THÊM VÀO fromJson
+      room: json['room'],
+      userId: json['userId'], // 👤 THÊM VÀO fromJson
+      lastUpdated: json['lastUpdated'] != null
+          ? DateTime.parse(json['lastUpdated'])
+          : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : null,
+      isPinned: json['isPinned'] ?? false, // 📌 THÊM VÀO fromJson
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'type': type.toString().split('.').last,
+      'state': state,
+      'value': value,
+      'icon': icon,
+      'avatarPath': avatarPath, // 🎨 THÊM VÀO toJson
+      'room': room,
+      'userId': userId, // 👤 THÊM VÀO toJson
+      'lastUpdated': lastUpdated?.toIso8601String(),
+      'createdAt': createdAt?.toIso8601String(),
+      'isPinned': isPinned, // 📌 THÊM VÀO toJson
+    };
+  }
+
+  Device copyWith({
+    String? id,
+    String? name,
+    DeviceType? type,
+    bool? state,
+    int? value,
+    String? icon,
+    String? avatarPath, // 🎨 THÊM VÀO copyWith
+    String? room,
+    String? userId, // 👤 THÊM VÀO copyWith
+    DateTime? lastUpdated,
+    DateTime? createdAt,
+    bool? isPinned, // 📌 THÊM VÀO copyWith
+  }) {
+    return Device(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      state: state ?? this.state,
+      value: value ?? this.value,
+      icon: icon ?? this.icon,
+      avatarPath: avatarPath ?? this.avatarPath, // 🎨 THÊM VÀO copyWith
+      room: room ?? this.room,
+      userId: userId ?? this.userId, // 👤 THÊM VÀO copyWith
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      createdAt: createdAt ?? this.createdAt,
+      isPinned: isPinned ?? this.isPinned, // 📌 THÊM VÀO copyWith
+    );
+  }
+
+  bool get isRelay => type == DeviceType.relay;
+  bool get isServo => type == DeviceType.servo;
+  bool get isFan => type == DeviceType.fan;
+  bool get isOn => state;
+  bool get isOff => !state;
+
+  // 🌪️ FAN SPECIFIC PROPERTIES
+  int get fanSpeed => isFan ? (value ?? 0) : 0;
+  String get fanMode {
+    if (!isFan) return 'off';
+    final speed = fanSpeed;
+    if (speed == 0) return 'off';
+    if (speed <= 85) return 'low';
+    if (speed <= 170) return 'medium';
+    return 'high';
+  }
+
+  // 🌪️ FAN SPEED HELPERS
+  static const int fanSpeedLow = 85;
+  static const int fanSpeedMedium = 170;
+  static const int fanSpeedHigh = 255;
+
+  // 📡 MQTT TOPIC GENERATION
+  String get mqttTopic {
+    // Tạo topic dạng: smart_home/devices/room/device_name
+    final cleanRoom = (room ?? 'general')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+
+    final cleanName = name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+
+    return 'smart_home/devices/$cleanRoom/$cleanName';
+  }
+
+  // 📡 FALLBACK TO OLD TOPIC FORMAT
+  String get legacyMqttTopic => 'smarthome/control/$id';
+}
+
+enum DeviceType { relay, servo, fan }
+
+extension DeviceTypeExtension on DeviceType {
+  /// Tên hiển thị dễ hiểu cho người dùng
+  String get displayName {
+    switch (this) {
+      case DeviceType.relay:
+        return 'Relay (Công tắc)';
+      case DeviceType.servo:
+        return 'Servo Motor';
+      case DeviceType.fan:
+        return 'PWM (Điều khiển tốc độ)';
+    }
+  }
+
+  /// Mô tả chi tiết cho người dùng
+  String get description {
+    switch (this) {
+      case DeviceType.relay:
+        return 'Dùng để bật/tắt thiết bị điện như đèn, máy bơm, ổ cắm điện. Chỉ có 2 trạng thái: BẬT hoặc TẮT.';
+      case DeviceType.servo:
+        return 'Động cơ servo có thể xoay đến góc chính xác. Thường dùng cho cửa tự động, rèm cửa, tay robot.';
+      case DeviceType.fan:
+        return 'Điều khiển tốc độ thiết bị như quạt, motor, đèn dimmer. Có thể điều chỉnh từ 0% đến 100%.';
+    }
+  }
+
+  /// Icon đại diện
+  String get icon {
+    switch (this) {
+      case DeviceType.relay:
+        return '⚡';
+      case DeviceType.servo:
+        return '🎚️';
+      case DeviceType.fan:
+        return '🌪️';
+    }
+  }
+
+  /// Đơn vị đo
+  String get unit {
+    switch (this) {
+      case DeviceType.relay:
+        return '';
+      case DeviceType.servo:
+        return '°';
+      case DeviceType.fan:
+        return '%';
+    }
+  }
+
+  /// Giá trị mặc định tối thiểu
+  int get minValue {
+    switch (this) {
+      case DeviceType.relay:
+        return 0;
+      case DeviceType.servo:
+        return 0;
+      case DeviceType.fan:
+        return 0;
+    }
+  }
+
+  /// Giá trị mặc định tối đa
+  int get maxValue {
+    switch (this) {
+      case DeviceType.relay:
+        return 1;
+      case DeviceType.servo:
+        return 180;
+      case DeviceType.fan:
+        return 255;
+    }
+  }
+
+  /// Các preset thông dụng
+  List<DevicePreset> get presets {
+    switch (this) {
+      case DeviceType.relay:
+        return [DevicePreset('Tắt', 0), DevicePreset('Bật', 1)];
+      case DeviceType.servo:
+        return [
+          DevicePreset('Đóng/Tắt', 0),
+          DevicePreset('45°', 45),
+          DevicePreset('90°', 90),
+          DevicePreset('135°', 135),
+          DevicePreset('Mở tối đa', 180),
+        ];
+      case DeviceType.fan:
+        return [
+          DevicePreset('Tắt', 0),
+          DevicePreset('Nhẹ', 85), // 33%
+          DevicePreset('Khá', 170), // 67%
+          DevicePreset('Mạnh', 255), // 100%
+        ];
+    }
+  }
+}
+
+class DevicePreset {
+  final String name;
+  final int value;
+
+  const DevicePreset(this.name, this.value);
+}

@@ -1,0 +1,43 @@
+{
+  "project_info": {
+    "project_number": "1024906096119",
+    "project_id": "iot-smart-home-3589f",
+    "storage_bucket": "iot-smart-home-3589f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1024906096119:android:98f4d8449aa0cfa10f92f2",
+        "android_client_info": {
+          "package_name": "com.example.version3"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1024906096119-3p12ic691fcpijbcd3s11desus8ajvue.apps.googleusercontent.com",
+          "client_type": 3
+        },
+        {
+          "client_id": "1024906096119-m8gjgnagmk1id4q3qth9r290rmfveumh.apps.googleusercontent.com",
+          "client_type": 1
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_iBHiD3O-NC96s4Wy1mQ78L8hguG_o0U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1024906096119-3p12ic691fcpijbcd3s11desus8ajvue.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
