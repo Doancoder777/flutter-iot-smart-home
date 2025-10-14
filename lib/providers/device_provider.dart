@@ -1,15 +1,22 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../models/device_model.dart';
 import '../services/image_picker_service.dart';
 import '../services/device_storage_service.dart';
+import '../services/mqtt_connection_manager.dart';
 import 'mqtt_provider.dart';
 
 class DeviceProvider extends ChangeNotifier {
   List<Device> _devices = [];
   MqttProvider? _mqttProvider;
+  MqttConnectionManager? _mqttConnectionManager;
   final DeviceStorageService _storageService = DeviceStorageService();
   String? _currentUserId;
+
+  // 🔄 Auto-ping timer
+  Timer? _pingTimer;
+  final Map<String, bool> _deviceOnlineStatus = {}; // deviceId -> online status
 
   List<Device> get devices => _devices;
   List<Device> get relays =>
@@ -20,6 +27,9 @@ class DeviceProvider extends ChangeNotifier {
       _devices.where((d) => d.type == DeviceType.fan).toList();
   int get devicesCount => _devices.length;
   String? get currentUserId => _currentUserId;
+
+  // 🔓 Public getter for MQTT provider (for test connection)
+  MqttProvider? get mqttProvider => _mqttProvider;
 
   DeviceProvider() {
     // Không khởi tạo devices ngay, chờ setCurrentUser
@@ -39,6 +49,142 @@ class DeviceProvider extends ChangeNotifier {
         await setCurrentUser('default_user');
       });
     }
+  }
+
+  void setMqttConnectionManager(MqttConnectionManager manager) {
+    _mqttConnectionManager = manager;
+
+    // 📨 Setup callback để nhận messages từ MQTT
+    manager.onMessageReceived = _handleMqttMessage;
+
+    debugPrint(
+      '🔧 DeviceProvider: MqttConnectionManager set with message handler',
+    );
+  }
+
+  /// 📨 Xử lý messages nhận được từ MQTT
+  void _handleMqttMessage(String topic, String payload) {
+    debugPrint('📨 DeviceProvider received: $topic = $payload');
+
+    // Tìm device có topic tương ứng
+    for (final device in _devices) {
+      if (device.mqttTopic == topic) {
+        debugPrint('🎯 Found device: ${device.name}');
+
+        // Parse payload và update device state
+        try {
+          // Kiểm tra nếu payload là số (cho relay/fan)
+          final numValue = int.tryParse(payload.trim());
+          if (numValue != null) {
+            // Update state cho relay
+            if (device.type == DeviceType.relay) {
+              device.state = numValue == 1;
+              debugPrint(
+                '🔄 Updated relay ${device.name}: state = ${device.state}',
+              );
+            }
+            // Update value cho servo
+            else if (device.type == DeviceType.servo) {
+              device.value = numValue;
+              debugPrint('🔄 Updated servo ${device.name}: value = $numValue');
+            }
+            // Update value cho fan
+            else if (device.type == DeviceType.fan) {
+              device.value = numValue;
+              debugPrint('🔄 Updated fan ${device.name}: value = $numValue');
+            }
+
+            // Save và notify
+            saveUserDevices();
+            _safeNotify();
+          }
+        } catch (e) {
+          debugPrint('❌ Error parsing message: $e');
+        }
+
+        break;
+      }
+    }
+  }
+
+  /// 🔍 Ping all devices để check online/offline status
+  Future<void> pingAllDevices() async {
+    if (_mqttProvider == null || !_mqttProvider!.isConnected) {
+      debugPrint('⚠️ MQTT not connected, cannot ping devices');
+      return;
+    }
+
+    if (_devices.isEmpty) {
+      debugPrint('⚠️ No devices to ping');
+      return;
+    }
+
+    debugPrint('');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('🔍 PING ALL DEVICES (${_devices.length} devices)');
+    debugPrint('═══════════════════════════════════════');
+
+    // Map để track responses
+    final Map<String, bool> responses = {};
+
+    for (final device in _devices) {
+      final deviceId = device.deviceId ?? 'unknown';
+      final pingTopic = 'smart_home/devices/$deviceId/${device.name}/ping';
+      final stateTopic = 'smart_home/devices/$deviceId/${device.name}/state';
+
+      debugPrint('📤 Pinging ${device.name}: $pingTopic');
+
+      // Initialize response tracking
+      responses[device.id] = false;
+
+      // Subscribe to state topic
+      _mqttProvider!.subscribe(stateTopic, (topic, message) {
+        debugPrint('📩 ${device.name} responded: $message');
+        if (message == '1' || message == 'online' || message == 'pong') {
+          responses[device.id] = true;
+          _deviceOnlineStatus[device.id] = true; // Track online status
+          debugPrint('✅ ${device.name} is ONLINE');
+        }
+      });
+
+      // Send ping
+      _mqttProvider!.publish(pingTopic, 'ping');
+    }
+
+    // Wait for responses (3 seconds)
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Unsubscribe and report results
+    debugPrint('');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('📊 PING RESULTS:');
+    int onlineCount = 0;
+
+    for (final device in _devices) {
+      final deviceId = device.deviceId ?? 'unknown';
+      final stateTopic = 'smart_home/devices/$deviceId/${device.name}/state';
+
+      _mqttProvider!.unsubscribe(stateTopic);
+
+      final isOnline = responses[device.id] ?? false;
+      if (isOnline) {
+        onlineCount++;
+        debugPrint('   ✅ ${device.name}: ONLINE');
+      } else {
+        _deviceOnlineStatus[device.id] = false; // Mark as offline
+        debugPrint('   ❌ ${device.name}: OFFLINE');
+      }
+    }
+
+    debugPrint('📊 Summary: $onlineCount/${_devices.length} devices online');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('');
+
+    // Notify UI to update
+    _safeNotify();
+
+    // Notify UI to update
+    _safeNotify();
   }
 
   /// Set current user và load devices của user đó
@@ -65,6 +211,58 @@ class DeviceProvider extends ChangeNotifier {
 
       // 🐞 DEBUG: Print MQTT topics after loading
       debugPrintMqttTopics();
+
+      // 📡 Auto-connect devices' MQTT (with delay to avoid blocking)
+      if (_mqttConnectionManager != null) {
+        debugPrint(
+          '🔌 Scheduling auto-connect for ${devices.length} devices...',
+        );
+
+        // Delay 1 giây để UI load xong, rồi mới connect MQTT
+        Future.delayed(const Duration(seconds: 1), () async {
+          debugPrint(
+            '🔍 Checking ${devices.length} devices for MQTT config...',
+          );
+          int devicesWithMqtt = 0;
+
+          for (final device in devices) {
+            if (device.mqttBroker != null && device.mqttBroker!.isNotEmpty) {
+              devicesWithMqtt++;
+              debugPrint(
+                '🔌 Device ${device.name} has MQTT: ${device.mqttBroker}:${device.mqttPort}',
+              );
+              debugPrint('   Topic: ${device.mqttTopic}');
+
+              final success = await _mqttConnectionManager!.connectDevice(
+                device,
+              );
+
+              if (success) {
+                debugPrint('✅ Device ${device.name} connected successfully!');
+              } else {
+                debugPrint(
+                  '⚠️ Device ${device.name} connection failed, will retry later',
+                );
+                // Retry sau 5 giây
+                Future.delayed(const Duration(seconds: 5), () {
+                  _mqttConnectionManager!.connectDevice(device);
+                });
+              }
+            } else {
+              debugPrint(
+                '⚠️ Device ${device.name} has NO MQTT config - skipping',
+              );
+            }
+          }
+
+          debugPrint(
+            '📊 Summary: $devicesWithMqtt/${devices.length} devices have MQTT config',
+          );
+
+          // 🔄 Start auto-ping timer after devices loaded
+          startAutoPing();
+        });
+      }
     } catch (e) {
       debugPrint('❌ Error loading user devices: $e');
     }
@@ -89,6 +287,14 @@ class DeviceProvider extends ChangeNotifier {
     required String room,
     String? icon,
     int? initialValue,
+    // 📡 MQTT configuration
+    String? mqttBroker,
+    int? mqttPort,
+    String? mqttUsername,
+    String? mqttPassword,
+    bool? mqttUseSsl,
+    // 🔑 ESP32 Device ID
+    String? esp32DeviceId,
   }) async {
     if (_currentUserId == null) {
       debugPrint('❌ Cannot add device: No current user');
@@ -96,11 +302,28 @@ class DeviceProvider extends ChangeNotifier {
     }
 
     try {
-      // Tạo ID unique cho device
-      final deviceId = await _storageService.generateDeviceId();
+      // Tạo ID unique cho device (database ID)
+      final dbDeviceId = await _storageService.generateDeviceId();
+
+      // 🔍 VALIDATION: Không cho phép trùng tên thiết bị trong cùng ESP32
+      if (esp32DeviceId != null) {
+        final existingDevices = _devices.where(
+          (d) => d.deviceId == esp32DeviceId,
+        );
+        for (final device in existingDevices) {
+          if (device.name.toLowerCase() == name.toLowerCase()) {
+            debugPrint(
+              '❌ Device name already exists in ESP32 $esp32DeviceId: $name',
+            );
+            throw Exception(
+              'Thiết bị "$name" đã tồn tại trong ESP32 này. Vui lòng đặt tên khác.',
+            );
+          }
+        }
+      }
 
       final newDevice = Device(
-        id: deviceId,
+        id: dbDeviceId,
         name: name,
         type: type,
         state: false,
@@ -109,6 +332,14 @@ class DeviceProvider extends ChangeNotifier {
         room: room,
         userId: _currentUserId,
         createdAt: DateTime.now(),
+        // 📡 MQTT config
+        mqttBroker: mqttBroker,
+        mqttPort: mqttPort,
+        mqttUsername: mqttUsername,
+        mqttPassword: mqttPassword,
+        mqttUseSsl: mqttUseSsl,
+        // 🔑 ESP32 Device ID
+        deviceId: esp32DeviceId,
       );
 
       // 🚨 Sử dụng service method để có validation MQTT topic
@@ -608,5 +839,49 @@ class DeviceProvider extends ChangeNotifier {
     } else {
       notifyListeners();
     }
+  }
+
+  // 🔄 AUTO-PING FUNCTIONALITY
+
+  /// Start auto-ping timer (ping every 5 minutes)
+  void startAutoPing() {
+    // Cancel existing timer
+    _pingTimer?.cancel();
+
+    debugPrint('🔄 Starting auto-ping timer (every 5 minutes)');
+
+    // Ping ngay lần đầu (sau 2 giây)
+    Future.delayed(const Duration(seconds: 2), () {
+      pingAllDevices();
+    });
+
+    // Setup timer 5 phút
+    _pingTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      debugPrint('⏰ Auto-ping timer triggered');
+      pingAllDevices();
+    });
+  }
+
+  /// Stop auto-ping timer
+  void stopAutoPing() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
+    debugPrint('🛑 Auto-ping timer stopped');
+  }
+
+  /// Check if device is online
+  bool isDeviceOnline(String deviceId) {
+    return _deviceOnlineStatus[deviceId] ?? false;
+  }
+
+  /// Get online devices count
+  int get onlineDevicesCount {
+    return _deviceOnlineStatus.values.where((v) => v).length;
+  }
+
+  @override
+  void dispose() {
+    stopAutoPing();
+    super.dispose();
   }
 }

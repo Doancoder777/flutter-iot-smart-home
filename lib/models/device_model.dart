@@ -12,6 +12,16 @@ class Device {
   final DateTime? createdAt; // 📅 THÊM THỜI GIAN TẠO
   bool isPinned; // 📌 THÊM FIELD GHIM CHO ĐIỀU KHIỂN NHANH
 
+  // 📡 MQTT Configuration riêng cho thiết bị này
+  final String? mqttBroker;
+  final int? mqttPort;
+  final String? mqttUsername;
+  final String? mqttPassword;
+  final bool? mqttUseSsl;
+
+  // 🔑 ESP32 Device ID (từ MAC address)
+  final String? deviceId; // Ví dụ: "ESP32_A4CF12B23D5E"
+
   Device({
     required this.id,
     required this.name,
@@ -25,6 +35,13 @@ class Device {
     this.lastUpdated,
     this.createdAt,
     this.isPinned = false, // 📌 THÊM PARAMETER VỚI DEFAULT FALSE
+    // 📡 MQTT config parameters
+    this.mqttBroker,
+    this.mqttPort,
+    this.mqttUsername,
+    this.mqttPassword,
+    this.mqttUseSsl,
+    this.deviceId, // 🔑 ESP32 Device ID
   });
 
   factory Device.fromJson(Map<String, dynamic> json) {
@@ -48,6 +65,13 @@ class Device {
           ? DateTime.parse(json['createdAt'])
           : null,
       isPinned: json['isPinned'] ?? false, // 📌 THÊM VÀO fromJson
+      // 📡 MQTT config
+      mqttBroker: json['mqttBroker'],
+      mqttPort: json['mqttPort'],
+      mqttUsername: json['mqttUsername'],
+      mqttPassword: json['mqttPassword'],
+      mqttUseSsl: json['mqttUseSsl'],
+      deviceId: json['deviceId'], // 🔑 ESP32 Device ID
     );
   }
 
@@ -65,6 +89,13 @@ class Device {
       'lastUpdated': lastUpdated?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
       'isPinned': isPinned, // 📌 THÊM VÀO toJson
+      // 📡 MQTT config
+      'mqttBroker': mqttBroker,
+      'mqttPort': mqttPort,
+      'mqttUsername': mqttUsername,
+      'mqttPassword': mqttPassword,
+      'mqttUseSsl': mqttUseSsl,
+      'deviceId': deviceId, // 🔑 ESP32 Device ID
     };
   }
 
@@ -81,6 +112,13 @@ class Device {
     DateTime? lastUpdated,
     DateTime? createdAt,
     bool? isPinned, // 📌 THÊM VÀO copyWith
+    // 📡 MQTT config
+    String? mqttBroker,
+    int? mqttPort,
+    String? mqttUsername,
+    String? mqttPassword,
+    bool? mqttUseSsl,
+    String? deviceId,
   }) {
     return Device(
       id: id ?? this.id,
@@ -95,6 +133,13 @@ class Device {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       createdAt: createdAt ?? this.createdAt,
       isPinned: isPinned ?? this.isPinned, // 📌 THÊM VÀO copyWith
+      // 📡 MQTT config
+      mqttBroker: mqttBroker ?? this.mqttBroker,
+      mqttPort: mqttPort ?? this.mqttPort,
+      mqttUsername: mqttUsername ?? this.mqttUsername,
+      mqttPassword: mqttPassword ?? this.mqttPassword,
+      mqttUseSsl: mqttUseSsl ?? this.mqttUseSsl,
+      deviceId: deviceId ?? this.deviceId, // 🔑 ESP32 Device ID
     );
   }
 
@@ -121,24 +166,41 @@ class Device {
   static const int fanSpeedHigh = 255;
 
   // 📡 MQTT TOPIC GENERATION
-  String get mqttTopic {
-    // Tạo topic dạng: smart_home/devices/room/device_name
-    final cleanRoom = (room ?? 'general')
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
+  // Topic structure: smart_home/devices/{deviceId}/{deviceName}/{function}
+  // Ví dụ: smart_home/devices/ESP32_A4CF12/den_phong_khach/cmd
 
-    final cleanName = name
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
-
-    return 'smart_home/devices/$cleanRoom/$cleanName';
+  String get mqttCommandTopic {
+    if (deviceId == null) {
+      // Fallback to old format nếu chưa có deviceId
+      return 'smart_home/devices/${_cleanDeviceName}/cmd';
+    }
+    return 'smart_home/devices/$deviceId/${_cleanDeviceName}/cmd';
   }
 
-  // 📡 FALLBACK TO OLD TOPIC FORMAT
+  String get mqttStateTopic {
+    if (deviceId == null) {
+      return 'smart_home/devices/${_cleanDeviceName}/state';
+    }
+    return 'smart_home/devices/$deviceId/${_cleanDeviceName}/state';
+  }
+
+  String get mqttPingTopic {
+    if (deviceId == null) {
+      return 'smart_home/devices/${_cleanDeviceName}/ping';
+    }
+    return 'smart_home/devices/$deviceId/${_cleanDeviceName}/ping';
+  }
+
+  String get _cleanDeviceName {
+    return name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  // 📡 FALLBACK TO OLD TOPIC FORMAT (deprecated)
+  String get mqttTopic => mqttCommandTopic;
   String get legacyMqttTopic => 'smarthome/control/$id';
 }
 

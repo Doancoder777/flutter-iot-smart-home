@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../models/sensor_data.dart';
@@ -7,11 +8,19 @@ import '../services/local_storage_service.dart';
 import '../services/sensor_config_service.dart';
 import '../services/notification_service.dart';
 import '../config/constants.dart';
+import 'mqtt_provider.dart';
 
 class SensorProvider extends ChangeNotifier {
   final LocalStorageService _storageService;
   final NotificationService _notificationService;
   late final SensorConfigService _sensorConfigService;
+
+  // MQTT Provider for ping-pong testing (global connection)
+  MqttProvider? _mqttProvider;
+
+  // Auto-ping functionality
+  Timer? _pingTimer;
+  final Map<String, bool> _sensorOnlineStatus = {}; // sensorId -> online status
 
   SensorData _currentData = SensorData.empty();
   List<SensorData> _history = [];
@@ -25,6 +34,14 @@ class SensorProvider extends ChangeNotifier {
   SensorData get currentData => _currentData;
   List<SensorData> get history => _history;
   List<UserSensor> get userSensors => _userSensors;
+
+  // MQTT Provider getter for test connection
+  MqttProvider? get mqttProvider => _mqttProvider;
+
+  // Set MQTT Provider (called from main.dart)
+  void setMqttProvider(MqttProvider? provider) {
+    _mqttProvider = provider;
+  }
 
   // Individual sensor getters for backward compatibility
   double get temperature => _currentData.temperature;
@@ -67,6 +84,9 @@ class SensorProvider extends ChangeNotifier {
       print(
         '📊 Loaded ${_userSensors.length} sensors for user: $_currentUserId',
       );
+
+      // Start auto-ping after loading sensors
+      startAutoPing();
     } catch (e) {
       print('❌ Error loading user sensors: $e');
       _userSensors = [];
@@ -538,5 +558,175 @@ class SensorProvider extends ChangeNotifier {
         notifyListeners();
       });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTO-PING FUNCTIONALITY (mirror DeviceProvider)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Ping a single sensor to check if it's online
+  Future<void> pingSensor(UserSensor sensor) async {
+    if (_mqttProvider == null || !_mqttProvider!.isConnected) {
+      debugPrint('⚠️ MQTT not connected, cannot ping sensor');
+      return;
+    }
+
+    final sensorId = sensor.sensorId ?? 'unknown';
+    final sensorName = sensor.displayName.replaceAll(' ', '_');
+    final pingTopic = 'smart_home/sensors/$sensorId/$sensorName/ping';
+    final stateTopic = 'smart_home/sensors/$sensorId/$sensorName/state';
+
+    debugPrint('📤 Pinging sensor ${sensor.displayName}: $pingTopic');
+
+    bool receivedResponse = false;
+
+    // Subscribe to state topic
+    _mqttProvider!.subscribe(stateTopic, (topic, message) {
+      debugPrint('📩 Sensor ${sensor.displayName} responded: $message');
+      if (message == '1' || message == 'online' || message == 'pong') {
+        receivedResponse = true;
+        _sensorOnlineStatus[sensor.id] = true;
+        debugPrint('✅ Sensor ${sensor.displayName} is ONLINE');
+      }
+    });
+
+    // Send ping
+    _mqttProvider!.publish(pingTopic, 'ping');
+
+    // Wait for response (3 seconds)
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Unsubscribe
+    _mqttProvider!.unsubscribe(stateTopic);
+
+    // Mark as offline if no response
+    if (!receivedResponse) {
+      _sensorOnlineStatus[sensor.id] = false;
+      debugPrint('❌ Sensor ${sensor.displayName}: OFFLINE');
+    }
+
+    _safeNotify();
+  }
+
+  /// Ping all sensors to check online status
+  Future<void> pingAllSensors() async {
+    if (_mqttProvider == null || !_mqttProvider!.isConnected) {
+      debugPrint('⚠️ MQTT not connected, cannot ping sensors');
+      return;
+    }
+
+    if (_userSensors.isEmpty) {
+      debugPrint('⚠️ No sensors to ping');
+      return;
+    }
+
+    debugPrint('');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('🔍 PING ALL SENSORS (${_userSensors.length} sensors)');
+    debugPrint('═══════════════════════════════════════');
+
+    // Map để track responses
+    final Map<String, bool> responses = {};
+
+    for (final sensor in _userSensors) {
+      final sensorId = sensor.sensorId ?? 'unknown';
+      final sensorName = sensor.displayName.replaceAll(' ', '_');
+      final pingTopic = 'smart_home/sensors/$sensorId/$sensorName/ping';
+      final stateTopic = 'smart_home/sensors/$sensorId/$sensorName/state';
+
+      debugPrint('📤 Pinging ${sensor.displayName}: $pingTopic');
+
+      // Initialize response tracking
+      responses[sensor.id] = false;
+
+      // Subscribe to state topic
+      _mqttProvider!.subscribe(stateTopic, (topic, message) {
+        debugPrint('📩 ${sensor.displayName} responded: $message');
+        if (message == '1' || message == 'online' || message == 'pong') {
+          responses[sensor.id] = true;
+          _sensorOnlineStatus[sensor.id] = true; // Track online status
+          debugPrint('✅ ${sensor.displayName} is ONLINE');
+        }
+      });
+
+      // Send ping
+      _mqttProvider!.publish(pingTopic, 'ping');
+    }
+
+    // Wait for responses (3 seconds)
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Unsubscribe and report results
+    debugPrint('');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('📊 PING RESULTS:');
+    int onlineCount = 0;
+
+    for (final sensor in _userSensors) {
+      final sensorId = sensor.sensorId ?? 'unknown';
+      final sensorName = sensor.displayName.replaceAll(' ', '_');
+      final stateTopic = 'smart_home/sensors/$sensorId/$sensorName/state';
+
+      _mqttProvider!.unsubscribe(stateTopic);
+
+      final isOnline = responses[sensor.id] ?? false;
+      if (isOnline) {
+        onlineCount++;
+        debugPrint('   ✅ ${sensor.displayName}: ONLINE');
+      } else {
+        _sensorOnlineStatus[sensor.id] = false; // Mark as offline
+        debugPrint('   ❌ ${sensor.displayName}: OFFLINE');
+      }
+    }
+
+    debugPrint(
+      '📊 Summary: $onlineCount/${_userSensors.length} sensors online',
+    );
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('');
+
+    _safeNotify();
+  }
+
+  /// Start auto-ping timer (ping every 5 minutes)
+  void startAutoPing() {
+    // Cancel existing timer
+    _pingTimer?.cancel();
+
+    debugPrint('🔄 Starting sensor auto-ping timer (every 5 minutes)');
+
+    // Ping ngay lần đầu (sau 2 giây)
+    Future.delayed(const Duration(seconds: 2), () {
+      pingAllSensors();
+    });
+
+    // Setup timer 5 phút
+    _pingTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      debugPrint('⏰ Sensor auto-ping timer triggered');
+      pingAllSensors();
+    });
+  }
+
+  /// Stop auto-ping timer
+  void stopAutoPing() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
+    debugPrint('🛑 Sensor auto-ping timer stopped');
+  }
+
+  /// Check if sensor is online
+  bool isSensorOnline(String sensorId) {
+    return _sensorOnlineStatus[sensorId] ?? false;
+  }
+
+  /// Get online sensors count
+  int get onlineSensorsCount {
+    return _sensorOnlineStatus.values.where((v) => v).length;
+  }
+
+  @override
+  void dispose() {
+    stopAutoPing();
+    super.dispose();
   }
 }

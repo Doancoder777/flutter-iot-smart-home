@@ -14,6 +14,14 @@ class UserSensor {
   final DateTime? lastUpdateAt;
   final dynamic lastValue;
 
+  // 📡 MQTT Configuration (giống Device model)
+  final String? sensorId; // ESP32 MAC-based ID (giống deviceId)
+  final String? mqttBroker;
+  final int? mqttPort;
+  final String? mqttUsername;
+  final String? mqttPassword;
+  final bool mqttUseSsl;
+
   const UserSensor({
     required this.id,
     required this.userId,
@@ -27,6 +35,13 @@ class UserSensor {
     required this.createdAt,
     this.lastUpdateAt,
     this.lastValue,
+    // MQTT config
+    this.sensorId,
+    this.mqttBroker,
+    this.mqttPort,
+    this.mqttUsername,
+    this.mqttPassword,
+    this.mqttUseSsl = false,
   });
 
   /// Lấy thông tin SensorType
@@ -106,6 +121,13 @@ class UserSensor {
     DateTime? createdAt,
     DateTime? lastUpdateAt,
     dynamic lastValue,
+    // MQTT config
+    String? sensorId,
+    String? mqttBroker,
+    int? mqttPort,
+    String? mqttUsername,
+    String? mqttPassword,
+    bool? mqttUseSsl,
   }) {
     return UserSensor(
       id: id ?? this.id,
@@ -120,6 +142,13 @@ class UserSensor {
       createdAt: createdAt ?? this.createdAt,
       lastUpdateAt: lastUpdateAt ?? this.lastUpdateAt,
       lastValue: lastValue ?? this.lastValue,
+      // MQTT config
+      sensorId: sensorId ?? this.sensorId,
+      mqttBroker: mqttBroker ?? this.mqttBroker,
+      mqttPort: mqttPort ?? this.mqttPort,
+      mqttUsername: mqttUsername ?? this.mqttUsername,
+      mqttPassword: mqttPassword ?? this.mqttPassword,
+      mqttUseSsl: mqttUseSsl ?? this.mqttUseSsl,
     );
   }
 
@@ -137,6 +166,13 @@ class UserSensor {
       'createdAt': createdAt.toIso8601String(),
       'lastUpdateAt': lastUpdateAt?.toIso8601String(),
       'lastValue': lastValue,
+      // MQTT config
+      'sensorId': sensorId,
+      'mqttBroker': mqttBroker,
+      'mqttPort': mqttPort,
+      'mqttUsername': mqttUsername,
+      'mqttPassword': mqttPassword,
+      'mqttUseSsl': mqttUseSsl,
     };
   }
 
@@ -158,6 +194,13 @@ class UserSensor {
           ? DateTime.parse(json['lastUpdateAt'])
           : null,
       lastValue: json['lastValue'],
+      // MQTT config
+      sensorId: json['sensorId'],
+      mqttBroker: json['mqttBroker'],
+      mqttPort: json['mqttPort'],
+      mqttUsername: json['mqttUsername'],
+      mqttPassword: json['mqttPassword'],
+      mqttUseSsl: json['mqttUseSsl'] ?? false,
     );
   }
 

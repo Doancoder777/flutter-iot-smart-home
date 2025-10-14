@@ -19,6 +19,15 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
   final _trueLabelController = TextEditingController();
   final _falseLabelController = TextEditingController();
 
+  // 📡 MQTT Config Controllers
+  final _sensorIdController = TextEditingController();
+  final _mqttBrokerController = TextEditingController();
+  final _mqttPortController = TextEditingController(text: '8883');
+  final _mqttUsernameController = TextEditingController();
+  final _mqttPasswordController = TextEditingController();
+  bool _mqttUseSsl = true;
+  bool _showMqttPassword = false;
+
   SensorType? _selectedSensorType;
   String? _selectedIcon;
   DisplayType _displayType = DisplayType.percentage;
@@ -31,6 +40,12 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     _maxValueController.dispose();
     _trueLabelController.dispose();
     _falseLabelController.dispose();
+    // MQTT controllers
+    _sensorIdController.dispose();
+    _mqttBrokerController.dispose();
+    _mqttPortController.dispose();
+    _mqttUsernameController.dispose();
+    _mqttPasswordController.dispose();
     super.dispose();
   }
 
@@ -65,6 +80,10 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
 
             // Sensor Type Info
             if (_selectedSensorType != null) _buildSensorInfo(),
+            const SizedBox(height: 24),
+
+            // MQTT Configuration
+            _buildMqttConfigSection(),
             const SizedBox(height: 32),
 
             // Add Button
@@ -631,6 +650,460 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Lỗi: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildMqttConfigSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.wifi, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Cấu hình MQTT',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.help_outline, size: 20),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('📡 MQTT là gì?'),
+                        content: const SingleChildScrollView(
+                          child: Text(
+                            'MQTT là giao thức truyền thông cho IoT.\n\n'
+                            'Mỗi cảm biến cần có thông tin MQTT để kết nối đến vi điều khiển (ESP32, Arduino, ...).\n\n'
+                            '• Sensor ID: Mã định danh cảm biến trên ESP32\n'
+                            '• Broker: Địa chỉ máy chủ MQTT (VD: 192.168.1.100)\n'
+                            '• Port: Cổng kết nối (mặc định 1883)\n'
+                            '• Username/Password: Thông tin đăng nhập (nếu có)\n'
+                            '• SSL: Mã hóa kết nối (nên bật nếu có hỗ trợ)',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Đóng'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 🔑 ESP32 Sensor ID
+            TextFormField(
+              controller: _sensorIdController,
+              decoration: InputDecoration(
+                labelText: 'ESP32 Sensor ID (Không bắt buộc)',
+                hintText: 'VD: DHT22_01',
+                helperText:
+                    'Mã định danh của cảm biến trên ESP32. Để trống nếu không có.',
+                helperMaxLines: 2,
+                prefixIcon: const Icon(Icons.fingerprint),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // MQTT Broker
+            TextFormField(
+              controller: _mqttBrokerController,
+              decoration: InputDecoration(
+                labelText: 'MQTT Broker *',
+                hintText: 'VD: 192.168.1.100 hoặc broker.hivemq.com',
+                prefixIcon: const Icon(Icons.dns),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onChanged: (value) {
+                // Auto-detect HiveMQ Cloud và suggest SSL
+                if (value.toLowerCase().contains('hivemq.cloud')) {
+                  setState(() {
+                    if (!_mqttUseSsl) {
+                      _mqttUseSsl = true;
+                      _mqttPortController.text = '8883';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '💡 HiveMQ Cloud phát hiện! Auto-enable SSL/TLS',
+                          ),
+                          duration: Duration(seconds: 2),
+                          backgroundColor: Colors.blue,
+                        ),
+                      );
+                    }
+                  });
+                }
+              },
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Vui lòng nhập địa chỉ MQTT broker';
+                }
+                // Validate không có http:// prefix
+                if (value.trim().startsWith('http://') ||
+                    value.trim().startsWith('https://')) {
+                  return 'Broker không cần http:// hoặc https://';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // MQTT Port
+            TextFormField(
+              controller: _mqttPortController,
+              decoration: InputDecoration(
+                labelText: 'MQTT Port',
+                hintText: '8883',
+                prefixIcon: const Icon(Icons.settings_ethernet),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final port = int.tryParse(value);
+                  if (port == null || port < 1 || port > 65535) {
+                    return 'Port phải từ 1-65535';
+                  }
+                  // Warning cho SSL port
+                  if (_mqttUseSsl && port != 8883) {
+                    return 'SSL/TLS thường dùng port 8883';
+                  }
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // MQTT Username
+            TextFormField(
+              controller: _mqttUsernameController,
+              decoration: InputDecoration(
+                labelText: 'Username (tùy chọn)',
+                hintText: 'Để trống nếu không cần',
+                prefixIcon: const Icon(Icons.person),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // MQTT Password
+            TextFormField(
+              controller: _mqttPasswordController,
+              decoration: InputDecoration(
+                labelText: 'Password (tùy chọn)',
+                hintText: 'Để trống nếu không cần',
+                prefixIcon: const Icon(Icons.lock),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _showMqttPassword ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _showMqttPassword = !_showMqttPassword;
+                    });
+                  },
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              obscureText: !_showMqttPassword,
+            ),
+            const SizedBox(height: 16),
+
+            // SSL Toggle
+            SwitchListTile(
+              title: const Text('Sử dụng SSL/TLS'),
+              subtitle: const Text('Mã hóa kết nối (port 8883)'),
+              value: _mqttUseSsl,
+              onChanged: (value) {
+                setState(() {
+                  _mqttUseSsl = value;
+                  if (value) {
+                    _mqttPortController.text = '8883';
+                  } else {
+                    _mqttPortController.text = '1883';
+                  }
+                });
+              },
+              secondary: const Icon(Icons.security),
+            ),
+
+            // Info box về HiveMQ Cloud
+            if (_mqttBrokerController.text.toLowerCase().contains('hivemq'))
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'HiveMQ Cloud yêu cầu SSL/TLS và credentials',
+                        style: TextStyle(fontSize: 12, color: Colors.blue[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Test Connection Button
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isLoading ? null : _testMqttConnection,
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('Test kết nối MQTT'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  side: BorderSide(color: Colors.blue[600]!),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _testMqttConnection() async {
+    // Validate required fields
+    if (_mqttBrokerController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Vui lòng nhập MQTT Broker'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate broker format
+    final broker = _mqttBrokerController.text.trim();
+    if (broker.startsWith('http://') || broker.startsWith('https://')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Broker không cần http:// hoặc https://'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate port
+    final port = int.tryParse(_mqttPortController.text.trim());
+    if (port == null || port < 1 || port > 65535) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Port phải từ 1-65535'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final sensorProvider = context.read<SensorProvider>();
+
+      print('🔍 DEBUG: mqttProvider = ${sensorProvider.mqttProvider}');
+      print(
+        '🔍 DEBUG: isConnected = ${sensorProvider.mqttProvider?.isConnected}',
+      );
+
+      // Kiểm tra MQTT đã connected chưa
+      if (sensorProvider.mqttProvider == null ||
+          !sensorProvider.mqttProvider!.isConnected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '❌ MQTT chưa kết nối.\n'
+                'mqttProvider: ${sensorProvider.mqttProvider}\n'
+                'isConnected: ${sensorProvider.mqttProvider?.isConnected}',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Sử dụng sensor ID hoặc tên hiển thị làm fallback
+      final sensorId = _sensorIdController.text.trim().isNotEmpty
+          ? _sensorIdController.text.trim()
+          : _displayNameController.text.trim().replaceAll(' ', '_');
+
+      if (sensorId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Vui lòng nhập Sensor ID hoặc Tên hiển thị'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final sensorName = _displayNameController.text.trim().isNotEmpty
+          ? _displayNameController.text.trim()
+          : 'sensor';
+
+      // Topic format: smart_home/sensors/{sensorId}/{sensorName}/state
+      final stateTopic =
+          'smart_home/sensors/$sensorId/${sensorName.replaceAll(' ', '_')}/state';
+      final pingTopic =
+          'smart_home/sensors/$sensorId/${sensorName.replaceAll(' ', '_')}/ping';
+
+      print('🔔 Testing sensor connection...');
+      print('📤 Subscribe to: $stateTopic');
+      print('📤 Will publish to: $pingTopic');
+
+      bool receivedResponse = false;
+
+      // Subscribe to state topic
+      sensorProvider.mqttProvider!.subscribe(stateTopic, (topic, message) {
+        print('📥 Received on $topic: $message');
+        if (message == '1' ||
+            message.toLowerCase() == 'online' ||
+            message.toLowerCase() == 'pong') {
+          receivedResponse = true;
+        }
+      });
+
+      // Publish ping
+      sensorProvider.mqttProvider!.publish(pingTopic, 'ping');
+      print('📤 Published ping to $pingTopic');
+
+      // Wait 3 seconds for response
+      await Future.delayed(const Duration(seconds: 3));
+
+      // Unsubscribe
+      sensorProvider.mqttProvider!.unsubscribe(stateTopic);
+
+      if (context.mounted) {
+        if (receivedResponse) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 28),
+                  const SizedBox(width: 8),
+                  Expanded(child: const Text('✅ Kết nối thành công')),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Cảm biến đã phản hồi!\n'),
+                  Text('📡 Broker: $broker:$port'),
+                  Text('🔐 SSL: ${_mqttUseSsl ? "Bật" : "Tắt"}'),
+                  if (_mqttUsernameController.text.isNotEmpty)
+                    Text('👤 Username: ${_mqttUsernameController.text}'),
+                  Text('\n✅ Cảm biến đang online và sẵn sàng!'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    color: Colors.orange,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: const Text('⚠️ Không nhận được phản hồi')),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Không nhận được phản hồi từ cảm biến trong 3 giây.\n',
+                  ),
+                  Text('📡 Broker: $broker:$port'),
+                  Text('🔐 SSL: ${_mqttUseSsl ? "Bật" : "Tắt"}'),
+                  const Text('\n💡 Nguyên nhân có thể:'),
+                  const Text('• ESP32 chưa được lập trình'),
+                  const Text('• Cảm biến đang offline'),
+                  const Text('• Cấu hình MQTT không khớp với ESP32'),
+                  const Text('• Topic format không đúng'),
+                  const Text('\n⚙️ Bạn vẫn có thể thêm cảm biến này.'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Test connection error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi kết nối: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {

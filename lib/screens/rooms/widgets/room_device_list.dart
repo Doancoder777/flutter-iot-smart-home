@@ -31,60 +31,58 @@ class RoomDeviceList extends StatelessWidget {
           itemBuilder: (context, index) {
             final device = devices[index];
 
+            print('🔧 Rendering device: ${device.name}, type: ${device.type}');
+
             // Hiển thị device dựa trên type
             if (device.type == DeviceType.relay) {
               return _buildRelayDevice(context, device, deviceProvider);
             } else if (device.type == DeviceType.servo) {
               return _buildServoDevice(context, device, deviceProvider);
+            } else if (device.type == DeviceType.fan) {
+              return _buildFanDevice(context, device, deviceProvider);
+            } else {
+              // Fallback: hiển thị generic device card
+              print(
+                '⚠️ Unknown device type: ${device.type} for ${device.name}',
+              );
+              return _buildRelayDevice(context, device, deviceProvider);
             }
-
-            return Container(); // fallback
           },
         );
       },
     );
   }
 
-  // Lấy devices từ provider theo phòng - KHÔNG HARD-CODE
+  // Lấy devices từ provider theo phòng - Filter by room field
   List<Device> _getDevicesFromProvider(DeviceProvider provider, String roomId) {
+    // Lấy devices của user hiện tại
     final allDevices = provider.devices;
 
-    switch (roomId) {
-      case 'living_room':
-        return allDevices
-            .where(
-              (d) =>
-                  d.id == 'light_living' ||
-                  d.id == 'mist_maker' ||
-                  d.id == 'fan_living',
-            )
-            .toList();
+    print('');
+    print('═══════════════════════════════════════');
+    print('🏠 RoomDeviceList - Debug Info');
+    print('═══════════════════════════════════════');
+    print('📍 Current roomId: $roomId');
+    print('📊 Total devices: ${allDevices.length}');
+    print('');
 
-      case 'bedroom':
-        return allDevices.where((d) => d.id == 'light_bedroom').toList();
-
-      case 'kitchen':
-        return allDevices
-            .where((d) => d.id == 'light_kitchen' || d.id == 'fan_kitchen')
-            .toList();
-
-      case 'bathroom':
-        return allDevices.where((d) => d.id == 'light_bathroom').toList();
-
-      case 'garden':
-        return allDevices
-            .where(
-              (d) =>
-                  d.id == 'pump' ||
-                  d.id == 'light_garden' ||
-                  d.id == 'roof_servo' ||
-                  d.id == 'gate_servo',
-            )
-            .toList();
-
-      default:
-        return [];
+    for (var device in allDevices) {
+      print('  • Device: ${device.name}');
+      print('    Room: "${device.room}"');
+      print('    Match: ${device.room == roomId}');
     }
+
+    // Filter theo room field (room được lưu khi user tạo device)
+    final filtered = allDevices
+        .where((device) => device.room == roomId)
+        .toList();
+
+    print('');
+    print('✅ Filtered devices for room "$roomId": ${filtered.length}');
+    print('═══════════════════════════════════════');
+    print('');
+
+    return filtered;
   }
 
   Widget _buildRelayDevice(
@@ -309,6 +307,107 @@ class RoomDeviceList extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  Widget _buildFanDevice(
+    BuildContext context,
+    Device device,
+    DeviceProvider provider,
+  ) {
+    final speed = device.fanSpeed;
+    final speedPercent = ((speed / 255) * 100).round();
+    final isOn = speed > 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: isOn ? Colors.blue : Colors.grey,
+          child: Icon(isOn ? Icons.air : Icons.wind_power, color: Colors.white),
+        ),
+        title: Text(
+          device.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          isOn ? 'Tốc độ: $speedPercent%' : 'Đang tắt',
+          style: TextStyle(
+            fontSize: 12,
+            color: isOn ? Colors.blue : Colors.grey,
+          ),
+        ),
+        trailing: Switch(
+          value: isOn,
+          onChanged: (value) {
+            if (value) {
+              provider.setFanSpeed(device.id, Device.fanSpeedMedium);
+            } else {
+              provider.setFanSpeed(device.id, 0);
+            }
+          },
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                // Speed Slider
+                Row(
+                  children: [
+                    const Text('Tốc độ: '),
+                    Expanded(
+                      child: Slider(
+                        value: speed.toDouble(),
+                        min: 0,
+                        max: 255,
+                        divisions: 10,
+                        label: '$speedPercent%',
+                        onChanged: (value) {
+                          provider.setFanSpeed(device.id, value.toInt());
+                        },
+                      ),
+                    ),
+                    Text('$speedPercent%'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Speed Presets
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _buildPresetButton(
+                      provider,
+                      device,
+                      'Thấp',
+                      'low',
+                      Colors.green,
+                      speed == Device.fanSpeedLow,
+                    ),
+                    _buildPresetButton(
+                      provider,
+                      device,
+                      'Trung bình',
+                      'medium',
+                      Colors.orange,
+                      speed == Device.fanSpeedMedium,
+                    ),
+                    _buildPresetButton(
+                      provider,
+                      device,
+                      'Cao',
+                      'high',
+                      Colors.red,
+                      speed == Device.fanSpeedHigh,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

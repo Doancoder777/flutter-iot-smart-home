@@ -11,6 +11,7 @@ import 'providers/auth_provider.dart';
 import 'services/mqtt_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/notification_service.dart';
+import 'services/mqtt_connection_manager.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/devices/devices_screen.dart';
@@ -55,13 +56,26 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
 
         ChangeNotifierProvider(create: (_) => MqttProvider(mqttService)),
-        ChangeNotifierProvider(
+
+        // 📡 MQTT Connection Manager - Per-device MQTT
+        ChangeNotifierProvider(create: (_) => MqttConnectionManager()),
+
+        ChangeNotifierProxyProvider<MqttProvider, SensorProvider>(
           create: (_) => SensorProvider(storageService, notificationService),
+          update: (_, mqtt, sensor) {
+            sensor?.setMqttProvider(mqtt);
+            return sensor!;
+          },
         ),
-        ChangeNotifierProxyProvider<MqttProvider, DeviceProvider>(
+        ChangeNotifierProxyProvider2<
+          MqttProvider,
+          MqttConnectionManager,
+          DeviceProvider
+        >(
           create: (_) => DeviceProvider(),
-          update: (_, mqtt, device) {
+          update: (_, mqtt, mqttManager, device) {
             device?.setMqttProvider(mqtt);
+            device?.setMqttConnectionManager(mqttManager);
             return device!;
           },
         ),

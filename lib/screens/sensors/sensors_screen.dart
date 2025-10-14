@@ -10,7 +10,26 @@ class SensorsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cảm biến'),
+        title: Consumer<SensorProvider>(
+          builder: (context, sensorProvider, _) {
+            final onlineCount = sensorProvider.onlineSensorsCount;
+            final totalCount = sensorProvider.userSensors.length;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Cảm biến'),
+                if (totalCount > 0)
+                  Text(
+                    '$onlineCount/$totalCount online',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
@@ -191,51 +210,74 @@ class SensorsScreen extends StatelessWidget {
   }
 
   Widget _buildSensorCard(BuildContext context, UserSensor sensor) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: () => _showSensorOptions(context, sensor),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Consumer<SensorProvider>(
+      builder: (context, sensorProvider, _) {
+        final isOnline = sensorProvider.isSensorOnline(sensor.id);
+
+        return Card(
+          elevation: 2,
+          child: InkWell(
+            onTap: () => _showSensorOptions(context, sensor),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(sensor.icon, style: const TextStyle(fontSize: 24)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      sensor.displayName,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                  Row(
+                    children: [
+                      Text(sensor.icon, style: const TextStyle(fontSize: 24)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          sensor.displayName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      overflow: TextOverflow.ellipsis,
+                      // Online/Offline indicator
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isOnline ? Colors.green : Colors.red,
+                          boxShadow: [
+                            if (isOnline)
+                              BoxShadow(
+                                color: Colors.green.withOpacity(0.5),
+                                blurRadius: 4,
+                                spreadRadius: 1,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    sensor.formattedValue,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  if (sensor.lastUpdateAt != null)
+                    Text(
+                      'Cập nhật: ${_formatLastUpdate(sensor.lastUpdateAt!)}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                    ),
                 ],
               ),
-              const Spacer(),
-              Text(
-                sensor.formattedValue,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              if (sensor.lastUpdateAt != null)
-                Text(
-                  'Cập nhật: ${_formatLastUpdate(sensor.lastUpdateAt!)}',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -244,19 +286,38 @@ class SensorsScreen extends StatelessWidget {
     UserSensor sensor,
     SensorProvider sensorProvider,
   ) {
+    final isOnline = sensorProvider.isSensorOnline(sensor.id);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(sensor.icon, style: const TextStyle(fontSize: 20)),
-          ),
+        leading: Stack(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Text(sensor.icon, style: const TextStyle(fontSize: 20)),
+              ),
+            ),
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isOnline ? Colors.green : Colors.red,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+          ],
         ),
         title: Text(sensor.displayName),
         subtitle: Column(

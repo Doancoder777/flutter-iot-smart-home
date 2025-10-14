@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/mqtt_provider.dart';
 import '../../providers/sensor_provider.dart';
 import '../../providers/device_provider.dart';
+import '../../services/mqtt_connection_manager.dart';
 import '../../config/app_colors.dart';
 import '../../models/device_model.dart';
 import 'widgets/animated_sensor_card.dart';
@@ -117,83 +118,164 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // MQTT Config Warning Banner
-            Consumer<MqttProvider>(
-              builder: (context, mqtt, _) {
-                final currentConfig = mqtt.currentConfig;
+            // 📡 Device Connection Status
+            Consumer2<DeviceProvider, MqttConnectionManager>(
+              builder: (context, deviceProvider, mqttManager, _) {
+                final devices = deviceProvider.devices;
+                final connectedCount = mqttManager.connectedDevicesCount;
+                final totalCount = devices.length;
 
-                // Debug log
-                print(
-                  '🏠 Home Screen - currentConfig: ${currentConfig?.broker ?? "null"}',
-                );
-
-                // Hiển thị warning nếu CHƯA CẤU HÌNH
-                if (currentConfig == null) {
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 16),
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red[300]!, width: 2),
+                return Container(
+                  margin: EdgeInsets.only(bottom: 16),
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: connectedCount == totalCount && totalCount > 0
+                          ? [Colors.green[50]!, Colors.green[100]!]
+                          : [Colors.orange[50]!, Colors.orange[100]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: Colors.red[700],
-                          size: 32,
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '⚠️ Chưa cấu hình MQTT',
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: connectedCount == totalCount && totalCount > 0
+                          ? Colors.green[300]!
+                          : Colors.orange[300]!,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.devices,
+                            color:
+                                connectedCount == totalCount && totalCount > 0
+                                ? Colors.green[700]
+                                : Colors.orange[700],
+                            size: 28,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Trạng thái thiết bị',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color:
+                                        connectedCount == totalCount &&
+                                            totalCount > 0
+                                        ? Colors.green[900]
+                                        : Colors.orange[900],
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  '$connectedCount/$totalCount thiết bị đã kết nối',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color:
+                                        connectedCount == totalCount &&
+                                            totalCount > 0
+                                        ? Colors.green[800]
+                                        : Colors.orange[800],
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (totalCount > 0)
+                            CircleAvatar(
+                              backgroundColor: Colors.white,
+                              child: Text(
+                                '${((connectedCount / totalCount) * 100).toStringAsFixed(0)}%',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: Colors.red[900],
+                                  fontSize: 12,
+                                  color: connectedCount == totalCount
+                                      ? Colors.green[700]
+                                      : Colors.orange[700],
                                 ),
                               ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Vui lòng cấu hình MQTT broker để kết nối với thiết bị IoT của bạn.',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.red[800],
+                            ),
+                        ],
+                      ),
+                      if (devices.isNotEmpty) ...[
+                        SizedBox(height: 12),
+                        Divider(height: 1),
+                        SizedBox(height: 8),
+                        ...devices.take(5).map((device) {
+                          final isConnected = mqttManager.isDeviceConnected(
+                            device.id,
+                          );
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isConnected
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
                                 ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    device.name,
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                                Text(
+                                  isConnected ? 'Đã kết nối' : 'Mất kết nối',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isConnected
+                                        ? Colors.green[700]
+                                        : Colors.red[700],
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        if (devices.length > 5)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'và ${devices.length - 5} thiết bị khác...',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey[600],
                               ),
-                            ],
+                            ),
+                          ),
+                      ] else
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Chưa có thiết bị nào. Thêm thiết bị để bắt đầu!',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.grey[600],
+                            ),
                           ),
                         ),
-                        Column(
-                          children: [
-                            IconButton(
-                              onPressed: () {
-                                Navigator.pushNamed(context, '/settings');
-                              },
-                              icon: Icon(
-                                Icons.settings,
-                                color: Colors.red[700],
-                              ),
-                              tooltip: 'Cấu hình ngay',
-                            ),
-                            Text(
-                              'Cài đặt',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.red[700],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return SizedBox.shrink();
+                    ],
+                  ),
+                );
               },
             ),
 

@@ -109,6 +109,28 @@ class MqttProvider extends ChangeNotifier {
     _mqttService.publish(topic, message, retain: retain);
   }
 
+  /// Subscribe to MQTT topic (for test connection)
+  void subscribe(
+    String topic,
+    Function(String topic, String message) callback,
+  ) {
+    _mqttService.subscribe(topic);
+
+    // Add temporary handler
+    final oldHandler = _messageHandler;
+    _messageHandler = (t, m) {
+      oldHandler?.call(t, m);
+      if (t == topic) {
+        callback(t, m);
+      }
+    };
+  }
+
+  /// Unsubscribe from MQTT topic
+  void unsubscribe(String topic) {
+    _mqttService.unsubscribe(topic);
+  }
+
   void _onConnected() {
     _isConnected = true;
     _connectionStatus = 'Connected';
