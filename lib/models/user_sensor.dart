@@ -1,4 +1,5 @@
 import 'sensor_type.dart';
+import 'device_mqtt_config.dart';
 
 class UserSensor {
   final String id;
@@ -10,6 +11,7 @@ class UserSensor {
   final Map<String, dynamic>? configuration;
   final DisplayConfig? displayConfig; // 🆕 Cấu hình hiển thị
   final String? customIcon; // 🆕 Icon tùy chỉnh
+  final DeviceMqttConfig? mqttConfig; // 📡 MQTT Configuration
   final DateTime createdAt;
   final DateTime? lastUpdateAt;
   final dynamic lastValue;
@@ -24,6 +26,7 @@ class UserSensor {
     this.configuration,
     this.displayConfig,
     this.customIcon,
+    this.mqttConfig, // 📡 MQTT Configuration
     required this.createdAt,
     this.lastUpdateAt,
     this.lastValue,
@@ -93,6 +96,18 @@ class UserSensor {
   bool get isWeatherSensor =>
       AvailableSensorTypes.isWeatherSensor(sensorTypeId);
 
+  // 📡 MQTT Helper Getters
+  bool get hasCustomMqttConfig => mqttConfig?.useCustomConfig == true;
+  String get mqttBroker => mqttConfig?.broker ?? 'default';
+  int get mqttPort => mqttConfig?.port ?? 8883;
+  String? get mqttUsername => mqttConfig?.username;
+  String? get mqttPassword => mqttConfig?.password;
+  bool get mqttUseSsl => mqttConfig?.useSsl ?? true;
+  String get finalMqttTopic => mqttConfig?.customTopic ?? mqttTopic;
+  String get mqttClientId =>
+      mqttConfig?.generateClientId() ??
+      'sensor_${id}_${DateTime.now().millisecondsSinceEpoch}';
+
   UserSensor copyWith({
     String? id,
     String? userId,
@@ -103,6 +118,7 @@ class UserSensor {
     Map<String, dynamic>? configuration,
     DisplayConfig? displayConfig,
     String? customIcon,
+    DeviceMqttConfig? mqttConfig,
     DateTime? createdAt,
     DateTime? lastUpdateAt,
     dynamic lastValue,
@@ -117,6 +133,7 @@ class UserSensor {
       configuration: configuration ?? this.configuration,
       displayConfig: displayConfig ?? this.displayConfig,
       customIcon: customIcon ?? this.customIcon,
+      mqttConfig: mqttConfig ?? this.mqttConfig,
       createdAt: createdAt ?? this.createdAt,
       lastUpdateAt: lastUpdateAt ?? this.lastUpdateAt,
       lastValue: lastValue ?? this.lastValue,
@@ -134,6 +151,7 @@ class UserSensor {
       'configuration': configuration,
       'displayConfig': displayConfig?.toJson(),
       'customIcon': customIcon,
+      'mqttConfig': mqttConfig?.toJson(),
       'createdAt': createdAt.toIso8601String(),
       'lastUpdateAt': lastUpdateAt?.toIso8601String(),
       'lastValue': lastValue,
@@ -153,6 +171,9 @@ class UserSensor {
           ? DisplayConfig.fromJson(json['displayConfig'])
           : null,
       customIcon: json['customIcon'],
+      mqttConfig: json['mqttConfig'] != null
+          ? DeviceMqttConfig.fromJson(json['mqttConfig'])
+          : null,
       createdAt: DateTime.parse(json['createdAt']),
       lastUpdateAt: json['lastUpdateAt'] != null
           ? DateTime.parse(json['lastUpdateAt'])
@@ -170,6 +191,7 @@ class UserSensor {
     Map<String, dynamic>? configuration,
     DisplayConfig? displayConfig,
     String? customIcon,
+    DeviceMqttConfig? mqttConfig,
   }) {
     final now = DateTime.now();
     final sensorId = '${sensorType.id}_${userId}_${now.millisecondsSinceEpoch}';
@@ -203,6 +225,7 @@ class UserSensor {
       configuration: configuration,
       displayConfig: finalDisplayConfig,
       customIcon: finalCustomIcon,
+      mqttConfig: mqttConfig,
       createdAt: now,
     );
   }

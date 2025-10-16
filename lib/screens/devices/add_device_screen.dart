@@ -38,8 +38,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   // 📡 MQTT Configuration - BẮT BUỘC cho mọi thiết bị
   final _mqttBrokerController = TextEditingController();
   final _mqttPortController = TextEditingController(text: '8883');
-  final _mqttUsernameController = TextEditingController();
-  final _mqttPasswordController = TextEditingController();
+  final _mqttUsernameController = TextEditingController(text: 'sigma');
+  final _mqttPasswordController = TextEditingController(text: '35386Doan');
   final _mqttCustomTopicController = TextEditingController();
   bool _mqttUseSsl = true;
   bool _showMqttPassword = false;

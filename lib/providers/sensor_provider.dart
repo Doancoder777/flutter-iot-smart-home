@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import '../models/sensor_data.dart';
 import '../models/user_sensor.dart';
 import '../models/sensor_type.dart';
+import '../models/device_mqtt_config.dart';
 import '../services/local_storage_service.dart';
 import '../services/sensor_config_service.dart';
 import '../services/notification_service.dart';
@@ -221,6 +222,7 @@ class SensorProvider extends ChangeNotifier {
     required String displayName,
     String? customMqttTopic,
     Map<String, dynamic>? configuration,
+    DeviceMqttConfig? mqttConfig,
   }) async {
     if (_currentUserId == null) {
       throw Exception('No user logged in');
@@ -232,6 +234,7 @@ class SensorProvider extends ChangeNotifier {
       displayName: displayName,
       customMqttTopic: customMqttTopic,
       configuration: configuration,
+      mqttConfig: mqttConfig,
     );
 
     await _loadUserSensors();

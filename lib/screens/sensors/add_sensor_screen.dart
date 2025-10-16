@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/sensor_type.dart';
+import '../../models/sensor_data.dart';
+import '../../models/device_mqtt_config.dart';
 import '../../providers/sensor_provider.dart';
 import '../../config/app_colors.dart';
 
@@ -15,9 +17,24 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
   final _formKey = GlobalKey<FormState>();
   final _displayNameController = TextEditingController();
   final _mqttTopicController = TextEditingController();
-  final _maxValueController = TextEditingController();
-  final _trueLabelController = TextEditingController();
-  final _falseLabelController = TextEditingController();
+  final _maxValueController = TextEditingController(
+    text: '100',
+  ); // Mặc định cho phần trăm
+  final _trueLabelController = TextEditingController(
+    text: 'Có',
+  ); // Mặc định cho boolean
+  final _falseLabelController = TextEditingController(
+    text: 'Không',
+  ); // Mặc định cho boolean
+
+  // 📡 MQTT Configuration - BẮT BUỘC cho mọi cảm biến
+  final _mqttBrokerController = TextEditingController();
+  final _mqttPortController = TextEditingController(text: '8883');
+  final _mqttUsernameController = TextEditingController(text: 'sigma');
+  final _mqttPasswordController = TextEditingController(text: '35386Doan');
+  final _mqttCustomTopicController = TextEditingController();
+  bool _mqttUseSsl = true;
+  bool _showMqttPassword = false;
 
   SensorType? _selectedSensorType;
   String? _selectedIcon;
@@ -31,6 +48,14 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     _maxValueController.dispose();
     _trueLabelController.dispose();
     _falseLabelController.dispose();
+
+    // Dispose MQTT controllers
+    _mqttBrokerController.dispose();
+    _mqttPortController.dispose();
+    _mqttUsernameController.dispose();
+    _mqttPasswordController.dispose();
+    _mqttCustomTopicController.dispose();
+
     super.dispose();
   }
 
@@ -65,6 +90,10 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
 
             // Sensor Type Info
             if (_selectedSensorType != null) _buildSensorInfo(),
+            const SizedBox(height: 32),
+
+            // 📡 MQTT Configuration Section
+            _buildMqttConfigSection(),
             const SizedBox(height: 32),
 
             // Add Button
@@ -379,6 +408,161 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     );
   }
 
+  Widget _buildMqttConfigSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wifi, color: AppColors.primary, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cấu hình MQTT (Bắt buộc)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      Text(
+                        'Mọi cảm biến phải có cấu hình MQTT để hoạt động',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // Broker URL
+            TextFormField(
+              controller: _mqttBrokerController,
+              decoration: const InputDecoration(
+                labelText: 'Broker URL *',
+                hintText: 'mqtt.example.com',
+                prefixIcon: Icon(Icons.cloud),
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Vui lòng nhập broker URL';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Port
+            TextFormField(
+              controller: _mqttPortController,
+              decoration: const InputDecoration(
+                labelText: 'Port *',
+                hintText: '8883',
+                prefixIcon: Icon(Icons.numbers),
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Vui lòng nhập port';
+                }
+                final port = int.tryParse(value);
+                if (port == null || port <= 0 || port > 65535) {
+                  return 'Port phải từ 1-65535';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // SSL Toggle
+            Row(
+              children: [
+                Icon(Icons.security, color: AppColors.primary),
+                const SizedBox(width: 12),
+                const Text('Sử dụng SSL/TLS'),
+                const Spacer(),
+                Switch(
+                  value: _mqttUseSsl,
+                  onChanged: (value) {
+                    setState(() {
+                      _mqttUseSsl = value;
+                    });
+                  },
+                  activeColor: AppColors.primary,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Username
+            TextFormField(
+              controller: _mqttUsernameController,
+              decoration: const InputDecoration(
+                labelText: 'Username (tùy chọn)',
+                hintText: 'username',
+                prefixIcon: Icon(Icons.person),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Password
+            TextFormField(
+              controller: _mqttPasswordController,
+              obscureText: !_showMqttPassword,
+              decoration: InputDecoration(
+                labelText: 'Password (tùy chọn)',
+                hintText: 'password',
+                prefixIcon: const Icon(Icons.lock),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _showMqttPassword ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _showMqttPassword = !_showMqttPassword;
+                    });
+                  },
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Custom Topic
+            TextFormField(
+              controller: _mqttCustomTopicController,
+              decoration: const InputDecoration(
+                labelText: 'Topic tùy chỉnh (tùy chọn)',
+                hintText: 'my_custom/topic',
+                prefixIcon: Icon(Icons.topic),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Để trống để sử dụng topic mặc định: ${_displayNameController.text.toLowerCase().replaceAll(' ', '_')}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAddButton() {
     return SizedBox(
       width: double.infinity,
@@ -416,7 +600,79 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
       if (_mqttTopicController.text.isEmpty) {
         _generateMqttTopic();
       }
+
+      // 🎯 Tự động thiết lập giá trị mặc định dựa trên loại cảm biến
+      _setDefaultValuesForSensorType(sensorType);
     });
+  }
+
+  /// Thiết lập giá trị mặc định dựa trên loại cảm biến
+  void _setDefaultValuesForSensorType(SensorType sensorType) {
+    // Chỉ áp dụng cho cảm biến không phải tùy chỉnh
+    if (sensorType.id == 'custom') return;
+
+    // Thiết lập loại hiển thị mặc định dựa trên sensor type
+    switch (sensorType.dataType) {
+      case SensorDataType.double:
+        // Cảm biến số thực -> Phần trăm với giá trị tối đa 100
+        _displayType = DisplayType.percentage;
+        _maxValueController.text = '100';
+        break;
+      case SensorDataType.int:
+        // Cảm biến số nguyên -> Xung với giá trị tối đa 1024
+        _displayType = DisplayType.pulse;
+        _maxValueController.text = '1024';
+        break;
+      case SensorDataType.bool:
+        // Cảm biến boolean -> Boolean với nhãn Có/Không
+        _displayType = DisplayType.boolean;
+        _trueLabelController.text = 'Có';
+        _falseLabelController.text = 'Không';
+        break;
+    }
+
+    // Thiết lập icon mặc định dựa trên loại cảm biến
+    _selectedIcon = _getDefaultIconForSensorType(sensorType);
+  }
+
+  /// Lấy icon mặc định cho loại cảm biến
+  String _getDefaultIconForSensorType(SensorType sensorType) {
+    switch (sensorType.id) {
+      case 'temperature':
+        return '🌡️';
+      case 'humidity':
+        return '💧';
+      case 'light':
+        return '💡';
+      case 'motion':
+        return '⚡'; // Sử dụng ⚡ cho motion
+      case 'door':
+        return '🚪';
+      case 'window':
+        return '🪟';
+      case 'smoke':
+        return '🔥';
+      case 'rain':
+        return '🌊';
+      case 'wind':
+        return '💨';
+      case 'pressure':
+        return '📊';
+      case 'noise':
+        return '🔔';
+      case 'dust':
+        return '🌪️'; // Sử dụng 🌪️ cho dust (có trong danh sách)
+      case 'soil_moisture':
+        return '💧';
+      case 'ph':
+        return '⚙️'; // Sử dụng ⚙️ cho pH (có trong danh sách)
+      case 'co2':
+        return '🌿'; // Giữ nguyên 🌿, sẽ fallback về 📡 nếu không có
+      case 'gas':
+        return '🔥';
+      default:
+        return '📡'; // Icon mặc định
+    }
   }
 
   void _generateMqttTopic() {
@@ -600,6 +856,26 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
           break;
       }
 
+      // Tạo cấu hình MQTT (bắt buộc)
+      final mqttConfig = DeviceMqttConfig(
+        deviceId: '', // Sẽ được set sau khi tạo sensor
+        broker: _mqttBrokerController.text,
+        port: int.parse(_mqttPortController.text),
+        username: _mqttUsernameController.text.isEmpty
+            ? null
+            : _mqttUsernameController.text,
+        password: _mqttPasswordController.text.isEmpty
+            ? null
+            : _mqttPasswordController.text,
+        useSsl: _mqttUseSsl,
+        useCustomConfig: true,
+        customTopic: _mqttCustomTopicController.text.isEmpty
+            ? null
+            : _mqttCustomTopicController.text,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
       // Tạo configuration map
       final configuration = <String, dynamic>{};
       if (displayConfig != null) {
@@ -614,6 +890,7 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
         displayName: _displayNameController.text.trim(),
         customMqttTopic: _mqttTopicController.text.trim(),
         configuration: configuration,
+        mqttConfig: mqttConfig,
       );
 
       if (context.mounted) {

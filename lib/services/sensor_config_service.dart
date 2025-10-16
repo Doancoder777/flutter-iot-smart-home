@@ -1,6 +1,7 @@
 import 'dart:convert';
 import '../models/user_sensor.dart';
 import '../models/sensor_type.dart';
+import '../models/device_mqtt_config.dart';
 import 'local_storage_service.dart';
 
 class SensorConfigService {
@@ -47,6 +48,7 @@ class SensorConfigService {
     required String displayName,
     String? customMqttTopic,
     Map<String, dynamic>? configuration,
+    DeviceMqttConfig? mqttConfig,
   }) async {
     try {
       // Kiểm tra sensor type có tồn tại không
@@ -65,6 +67,7 @@ class SensorConfigService {
         displayName: displayName,
         customMqttTopic: customMqttTopic,
         configuration: configuration,
+        mqttConfig: mqttConfig,
       );
 
       // Kiểm tra MQTT topic có bị trùng không
