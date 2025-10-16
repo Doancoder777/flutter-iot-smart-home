@@ -4,6 +4,7 @@ import '../../models/device_model.dart';
 import '../../providers/device_provider.dart';
 import '../../widgets/device_avatar.dart';
 import '../../config/app_colors.dart';
+import 'device_mqtt_config_screen.dart';
 
 /// Màn hình chi tiết thiết bị
 class DeviceDetailScreen extends StatelessWidget {
@@ -24,6 +25,11 @@ class DeviceDetailScreen extends StatelessWidget {
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             actions: [
+              IconButton(
+                icon: const Icon(Icons.wifi),
+                onPressed: () => _openMqttConfig(context),
+                tooltip: 'Cấu hình MQTT',
+              ),
               IconButton(
                 icon: const Icon(Icons.settings),
                 onPressed: () => _showDeviceSettings(context),
@@ -610,10 +616,15 @@ class DeviceDetailScreen extends StatelessWidget {
       }
     }
   }
-  
+
   // 🎚️ Helper method cho servo preset button
-  Widget _servoPresetButton(BuildContext context, DeviceProvider provider, 
-      Device device, String label, int angle) {
+  Widget _servoPresetButton(
+    BuildContext context,
+    DeviceProvider provider,
+    Device device,
+    String label,
+    int angle,
+  ) {
     final isSelected = (device.value ?? 0) == angle;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -622,47 +633,58 @@ class DeviceDetailScreen extends StatelessWidget {
           provider.updateServoValue(device.id, angle);
         },
         style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected 
-              ? AppColors.primary 
-              : Colors.grey[300],
-          foregroundColor: isSelected 
-              ? Colors.white 
-              : Colors.black87,
+          backgroundColor: isSelected ? AppColors.primary : Colors.grey[300],
+          foregroundColor: isSelected ? Colors.white : Colors.black87,
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         child: Text(label, style: const TextStyle(fontSize: 12)),
       ),
     );
   }
-  
-  // 🌪️ Helper method cho fan speed button  
-  Widget _fanSpeedButton(BuildContext context, DeviceProvider provider,
-      Device device, String label, int speed, Color color) {
+
+  // 🌪️ Helper method cho fan speed button
+  Widget _fanSpeedButton(
+    BuildContext context,
+    DeviceProvider provider,
+    Device device,
+    String label,
+    int speed,
+    Color color,
+  ) {
     final isSelected = (device.value ?? 0) == speed;
     return ElevatedButton(
       onPressed: () {
-        provider.updateServoValue(device.id, speed); // Dùng chung updateServoValue
+        provider.updateServoValue(
+          device.id,
+          speed,
+        ); // Dùng chung updateServoValue
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: isSelected ? color : Colors.grey[300],
         foregroundColor: isSelected ? Colors.white : Colors.black87,
         padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
     );
   }
-  
+
   // 🌪️ Helper method để hiển thị label tốc độ fan
   String _getFanSpeedLabel(int speed) {
     if (speed == 0) return 'Tắt (0%)';
     if (speed <= 85) return 'Nhẹ (${((speed / 255) * 100).round()}%)';
     if (speed <= 170) return 'Khá (${((speed / 255) * 100).round()}%)';
     return 'Mạnh (${((speed / 255) * 100).round()}%)';
+  }
+
+  // 📡 Mở màn hình cấu hình MQTT
+  void _openMqttConfig(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeviceMqttConfigScreen(device: device),
+      ),
+    );
   }
 }

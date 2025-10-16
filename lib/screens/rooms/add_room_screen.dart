@@ -64,33 +64,28 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
       );
 
       // Create a basic device for this room to make it appear in rooms list
-      final success = await deviceProvider.addDevice(
+      final device = Device(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: 'Đèn ${_roomNameController.text.trim()}',
         type: DeviceType.relay,
         room: _roomNameController.text.trim(),
         icon: _selectedIcon,
+        createdAt: DateTime.now(),
       );
 
+      await deviceProvider.addDevice(device);
+
       if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Đã tạo phòng "${_roomNameController.text.trim()}" thành công!\nBạn có thể thêm thiết bị khác vào phòng này.',
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Đã tạo phòng "${_roomNameController.text.trim()}" thành công!\nBạn có thể thêm thiết bị khác vào phòng này.',
             ),
-          );
-          Navigator.of(context).pop();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể tạo phòng. Vui lòng thử lại.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {

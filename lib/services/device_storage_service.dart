@@ -12,6 +12,15 @@ class DeviceStorageService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final devicesJson = devices.map((device) => device.toJson()).toList();
+
+      // 🔍 DEBUG: Print MQTT config for each device
+      for (int i = 0; i < devices.length; i++) {
+        final device = devices[i];
+        print('🔍 DEBUG: Device $i: ${device.name}');
+        print('🔍 DEBUG: mqttConfig: ${device.mqttConfig?.toJson()}');
+        print('🔍 DEBUG: hasCustomMqttConfig: ${device.hasCustomMqttConfig}');
+      }
+
       final success = await prefs.setString(
         '${_devicesKey}_$userId',
         jsonEncode(devicesJson),
@@ -41,6 +50,19 @@ class DeviceStorageService {
 
       final List<dynamic> devicesJson = jsonDecode(devicesString);
       final devices = devicesJson.map((json) => Device.fromJson(json)).toList();
+
+      // 🔍 DEBUG: Print MQTT config for each loaded device
+      for (int i = 0; i < devices.length; i++) {
+        final device = devices[i];
+        print('🔍 DEBUG: Loaded Device $i: ${device.name}');
+        print('🔍 DEBUG: mqttConfig: ${device.mqttConfig?.toJson()}');
+        print('🔍 DEBUG: hasCustomMqttConfig: ${device.hasCustomMqttConfig}');
+        if (device.mqttConfig != null) {
+          print(
+            '🔍 DEBUG: useCustomConfig: ${device.mqttConfig!.useCustomConfig}',
+          );
+        }
+      }
 
       debugPrint('📱 Loaded ${devices.length} devices for user $userId');
       return devices;

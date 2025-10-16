@@ -1,5 +1,6 @@
 import '../models/mqtt_config.dart';
 import '../services/local_storage_service.dart';
+import '../config/mqtt_config.dart' as global;
 
 class MqttConfigService {
   final LocalStorageService _storageService;
@@ -37,15 +38,9 @@ class MqttConfigService {
     }
   }
 
-  /// Get default MQTT configuration (from the original hard-coded values)
+  /// Get default MQTT configuration từ file cấu hình tập trung
   MqttConfig _getDefaultConfig() {
-    return const MqttConfig(
-      broker: '16257efaa31f4843a11e19f83c34e594.s1.eu.hivemq.cloud',
-      port: 8883,
-      username: 'sigma',
-      password: '35386Doan',
-      useSsl: true,
-    );
+    return MqttConfig.fromJson(global.MqttConfig.toJson());
   }
 
   /// Clear MQTT config for user

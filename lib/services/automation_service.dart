@@ -23,7 +23,7 @@ class AutomationService {
   void initialize() {
     // Đánh giá quy tắc mỗi 5 giây
     _evaluationTimer = Timer.periodic(Duration(seconds: 5), (_) {
-      print('⏰ Timer tick - evaluating rules...');
+      // print('⏰ Timer tick - evaluating rules...');
       _evaluateRules();
     });
     print('✅ AutomationService: Initialized');

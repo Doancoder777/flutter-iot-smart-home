@@ -37,9 +37,8 @@ class MqttService {
       // Use custom config if provided, otherwise use default
       final config = customConfig ?? _getDefaultConfig();
 
-      // Tạo client với unique ID ngay lập tức
-      final uniqueId =
-          'flutter_smart_home_${DateTime.now().millisecondsSinceEpoch}_${(DateTime.now().microsecond % 1000)}';
+      // Tạo client với unique ID từ config tập trung
+      final uniqueId = MqttConfig.generateUniqueClientId();
       client = MqttServerClient.withPort(config.broker, uniqueId, config.port);
 
       // Configure client
@@ -240,14 +239,8 @@ class MqttService {
     );
   }
 
-  /// Get default MQTT config (fallback to hard-coded values)
+  /// Get default MQTT config từ file cấu hình tập trung
   custom.MqttConfig _getDefaultConfig() {
-    return const custom.MqttConfig(
-      broker: '16257efaa31f4843a11e19f83c34e594.s1.eu.hivemq.cloud',
-      port: 8883,
-      username: 'sigma',
-      password: '35386Doan',
-      useSsl: true,
-    );
+    return custom.MqttConfig.fromJson(MqttConfig.toJson());
   }
 }

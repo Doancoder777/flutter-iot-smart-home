@@ -1,3 +1,5 @@
+import 'device_mqtt_config.dart';
+
 class Device {
   final String id;
   final String name;
@@ -12,6 +14,9 @@ class Device {
   final DateTime? createdAt; // 📅 THÊM THỜI GIAN TẠO
   bool isPinned; // 📌 THÊM FIELD GHIM CHO ĐIỀU KHIỂN NHANH
 
+  // 📡 THÊM CẤU HÌNH MQTT RIÊNG CHO THIẾT BỊ
+  final DeviceMqttConfig? mqttConfig;
+
   Device({
     required this.id,
     required this.name,
@@ -25,6 +30,7 @@ class Device {
     this.lastUpdated,
     this.createdAt,
     this.isPinned = false, // 📌 THÊM PARAMETER VỚI DEFAULT FALSE
+    this.mqttConfig, // 📡 THÊM PARAMETER MQTT CONFIG
   });
 
   factory Device.fromJson(Map<String, dynamic> json) {
@@ -48,6 +54,9 @@ class Device {
           ? DateTime.parse(json['createdAt'])
           : null,
       isPinned: json['isPinned'] ?? false, // 📌 THÊM VÀO fromJson
+      mqttConfig: json['mqttConfig'] != null
+          ? DeviceMqttConfig.fromJson(json['mqttConfig'])
+          : null, // 📡 THÊM VÀO fromJson
     );
   }
 
@@ -65,6 +74,7 @@ class Device {
       'lastUpdated': lastUpdated?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
       'isPinned': isPinned, // 📌 THÊM VÀO toJson
+      'mqttConfig': mqttConfig?.toJson(), // 📡 THÊM VÀO toJson
     };
   }
 
@@ -81,6 +91,7 @@ class Device {
     DateTime? lastUpdated,
     DateTime? createdAt,
     bool? isPinned, // 📌 THÊM VÀO copyWith
+    DeviceMqttConfig? mqttConfig, // 📡 THÊM VÀO copyWith
   }) {
     return Device(
       id: id ?? this.id,
@@ -95,6 +106,7 @@ class Device {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       createdAt: createdAt ?? this.createdAt,
       isPinned: isPinned ?? this.isPinned, // 📌 THÊM VÀO copyWith
+      mqttConfig: mqttConfig ?? this.mqttConfig, // 📡 THÊM VÀO copyWith
     );
   }
 
@@ -140,6 +152,34 @@ class Device {
 
   // 📡 FALLBACK TO OLD TOPIC FORMAT
   String get legacyMqttTopic => 'smarthome/control/$id';
+
+  // 📡 MQTT CONFIGURATION HELPERS
+
+  /// Kiểm tra thiết bị có sử dụng cấu hình MQTT riêng không
+  bool get hasCustomMqttConfig => mqttConfig?.useCustomConfig == true;
+
+  /// Lấy broker MQTT cho thiết bị này (riêng hoặc global)
+  String get mqttBroker => mqttConfig?.broker ?? 'default';
+
+  /// Lấy port MQTT cho thiết bị này
+  int get mqttPort => mqttConfig?.port ?? 8883;
+
+  /// Lấy username MQTT cho thiết bị này
+  String? get mqttUsername => mqttConfig?.username;
+
+  /// Lấy password MQTT cho thiết bị này
+  String? get mqttPassword => mqttConfig?.password;
+
+  /// Kiểm tra thiết bị có sử dụng SSL không
+  bool get mqttUseSsl => mqttConfig?.useSsl ?? true;
+
+  /// Lấy topic cuối cùng (dùng custom topic nếu có)
+  String get finalMqttTopic => mqttConfig?.getTopic(mqttTopic) ?? mqttTopic;
+
+  /// Tạo client ID unique cho thiết bị này
+  String get mqttClientId =>
+      mqttConfig?.generateClientId() ??
+      'device_${id}_${DateTime.now().millisecondsSinceEpoch}';
 }
 
 enum DeviceType { relay, servo, fan }

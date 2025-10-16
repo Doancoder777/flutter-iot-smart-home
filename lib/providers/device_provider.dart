@@ -3,12 +3,14 @@ import 'package:flutter/scheduler.dart';
 import '../models/device_model.dart';
 import '../services/image_picker_service.dart';
 import '../services/device_storage_service.dart';
+import '../services/device_mqtt_service.dart';
 import 'mqtt_provider.dart';
 
 class DeviceProvider extends ChangeNotifier {
   List<Device> _devices = [];
   MqttProvider? _mqttProvider;
   final DeviceStorageService _storageService = DeviceStorageService();
+  final DeviceMqttService _deviceMqttService = DeviceMqttService();
   String? _currentUserId;
 
   List<Device> get devices => _devices;
@@ -82,55 +84,20 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
-  /// Thêm device mới
-  Future<bool> addDevice({
-    required String name,
-    required DeviceType type,
-    required String room,
-    String? icon,
-    int? initialValue,
-  }) async {
-    if (_currentUserId == null) {
-      debugPrint('❌ Cannot add device: No current user');
-      return false;
-    }
-
+  /// Thêm thiết bị mới
+  Future<void> addDevice(Device device) async {
     try {
-      // Tạo ID unique cho device
-      final deviceId = await _storageService.generateDeviceId();
+      // Thêm device vào danh sách
+      _devices.add(device);
+      _safeNotify();
 
-      final newDevice = Device(
-        id: deviceId,
-        name: name,
-        type: type,
-        state: false,
-        value: type == DeviceType.servo ? (initialValue ?? 0) : null,
-        icon: icon ?? (type == DeviceType.relay ? '⚡' : '🎚️'),
-        room: room,
-        userId: _currentUserId,
-        createdAt: DateTime.now(),
-      );
+      // Auto save changes
+      await saveUserDevices();
 
-      // 🚨 Sử dụng service method để có validation MQTT topic
-      final success = await _storageService.addUserDevice(
-        _currentUserId!,
-        newDevice,
-      );
-
-      if (success) {
-        // Reload danh sách từ storage để đồng bộ
-        await loadUserDevices(_currentUserId!);
-        debugPrint(
-          '✅ Added device: ${newDevice.name} -> ${newDevice.mqttTopic}',
-        );
-        return true;
-      } else {
-        debugPrint('❌ Failed to add device: ${newDevice.name}');
-        return false;
-      }
+      print('✅ Added device: ${device.name}');
     } catch (e) {
-      debugPrint('❌ Error adding device: $e');
-      rethrow; // Rethrow để UI có thể hiển thị lỗi chi tiết
+      print('❌ Error adding device: $e');
+      rethrow;
     }
   }
 
@@ -183,21 +150,69 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
+  /// Cập nhật thiết bị
+  Future<void> updateDevice(Device device) async {
+    final index = _devices.indexWhere((d) => d.id == device.id);
+    if (index != -1) {
+      _devices[index] = device.copyWith(lastUpdated: DateTime.now());
+      _safeNotify();
+
+      // Auto save changes
+      await saveUserDevices();
+
+      print('🔄 Updated device: ${device.name}');
+    }
+  }
+
   void updateDeviceState(String id, bool state) async {
     final index = _devices.indexWhere((d) => d.id == id);
     if (index != -1) {
       _devices[index] = _devices[index].copyWith(state: state);
 
-      // Gửi lệnh qua MQTT
-      if (_mqttProvider != null) {
-        String topic = _devices[index].mqttTopic;
-        String message = state ? '1' : '0';
+      // Gửi lệnh qua MQTT - ưu tiên broker riêng của thiết bị
+      final device = _devices[index];
+      final topic = device.finalMqttTopic;
+      final message = state ? '1' : '0';
+
+      print(
+        '🔍 DEBUG: Device ${device.name} - hasCustomMqttConfig: ${device.hasCustomMqttConfig}',
+      );
+      print('🔍 DEBUG: mqttConfig is null: ${device.mqttConfig == null}');
+      if (device.mqttConfig != null) {
+        print(
+          '🔍 DEBUG: useCustomConfig: ${device.mqttConfig!.useCustomConfig}',
+        );
+        print('🔍 DEBUG: broker: ${device.mqttConfig!.broker}');
+        print('🔍 DEBUG: port: ${device.mqttConfig!.port}');
+      }
+      if (device.hasCustomMqttConfig) {
+        print(
+          '🔍 DEBUG: Custom MQTT Config - Broker: ${device.mqttConfig!.broker}:${device.mqttConfig!.port}',
+        );
+        print('🔍 DEBUG: Custom Topic: ${device.finalMqttTopic}');
+      } else {
+        print('🔍 DEBUG: Using global MQTT config');
+        print('🔍 DEBUG: Global Topic: $topic');
+      }
+
+      // Thử gửi qua broker riêng của thiết bị trước
+      final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
+        device,
+        message,
+      );
+
+      if (sentViaDeviceMqtt) {
+        print('✅ SUCCESS: Device MQTT - $topic -> $message (Custom Broker)');
+      } else if (_mqttProvider != null) {
+        // Fallback về broker global
         _mqttProvider!.publish(topic, message);
-        print('📡 MQTT: $topic -> $message');
+        print('✅ SUCCESS: Global MQTT - $topic -> $message (Global Broker)');
+      } else {
+        print('❌ FAILED: No MQTT provider available');
       }
 
       _safeNotify();
-      print('🔄 Device ${_devices[index].name}: ${state ? "ON" : "OFF"}');
+      print('🔄 Device ${device.name}: ${state ? "ON" : "OFF"}');
     }
   }
 
@@ -208,22 +223,31 @@ class DeviceProvider extends ChangeNotifier {
             _devices[index].type == DeviceType.fan)) {
       _devices[index] = _devices[index].copyWith(value: value);
 
-      // Gửi lệnh qua MQTT
-      if (_mqttProvider != null) {
-        String topic = _devices[index].mqttTopic;
-        String message;
+      // Gửi lệnh qua MQTT - ưu tiên broker riêng của thiết bị
+      final device = _devices[index];
+      final topic = device.finalMqttTopic;
+      String message;
 
-        // Quạt gửi JSON với tốc độ
-        if (_devices[index].type == DeviceType.fan) {
-          message = '{"command": "set_speed", "speed": $value}';
-          print('📡 MQTT Fan JSON: $topic -> $message');
-        } else {
-          // Servo thông thường gửi số đơn giản
-          message = value.toString();
-          print('📡 MQTT Servo: $topic -> $message');
-        }
+      // Quạt gửi JSON với tốc độ
+      if (device.type == DeviceType.fan) {
+        message = '{"command": "set_speed", "speed": $value}';
+      } else {
+        // Servo thông thường gửi số đơn giản
+        message = value.toString();
+      }
 
+      // Thử gửi qua broker riêng của thiết bị trước
+      final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
+        device,
+        message,
+      );
+
+      if (sentViaDeviceMqtt) {
+        print('📡 Device MQTT: $topic -> $message');
+      } else if (_mqttProvider != null) {
+        // Fallback về broker global
         _mqttProvider!.publish(topic, message);
+        print('📡 Global MQTT: $topic -> $message');
       }
 
       _safeNotify();
@@ -272,28 +296,76 @@ class DeviceProvider extends ChangeNotifier {
 
         _devices[index] = device.copyWith(state: newState, value: newSpeed);
 
-        // Gửi JSON command cho quạt
-        if (_mqttProvider != null) {
-          String topic = _devices[index].mqttTopic;
-          String message = newState
-              ? '{"command": "speed", "speed": $newSpeed, "mode": "${_devices[index].fanMode}"}'
-              : '{"command": "off"}';
+        // Gửi JSON command cho quạt - ưu tiên broker riêng của thiết bị
+        String topic = _devices[index].finalMqttTopic;
+        String message = newState
+            ? '{"command": "speed", "speed": $newSpeed, "mode": "${_devices[index].fanMode}"}'
+            : '{"command": "off"}';
+
+        print(
+          '🔍 DEBUG: Device ${device.name} - hasCustomMqttConfig: ${device.hasCustomMqttConfig}',
+        );
+        print('🔍 DEBUG: mqttConfig is null: ${device.mqttConfig == null}');
+        if (device.mqttConfig != null) {
+          print(
+            '🔍 DEBUG: useCustomConfig: ${device.mqttConfig!.useCustomConfig}',
+          );
+          print('🔍 DEBUG: broker: ${device.mqttConfig!.broker}');
+          print('🔍 DEBUG: port: ${device.mqttConfig!.port}');
+        }
+
+        final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
+          device,
+          message,
+        );
+
+        if (sentViaDeviceMqtt) {
+          print(
+            '✅ SUCCESS: Device MQTT Fan - $topic -> $message (Custom Broker)',
+          );
+        } else if (_mqttProvider != null) {
           _mqttProvider!.publish(topic, message);
-          print('📡 MQTT Fan: $topic -> $message');
+          print(
+            '✅ SUCCESS: Global MQTT Fan - $topic -> $message (Global Broker)',
+          );
+        } else {
+          print('❌ FAILED: No MQTT provider available');
         }
 
         print(
           '🌪️ Fan ${device.name}: ${_devices[index].fanMode.toUpperCase()} (${((_devices[index].fanSpeed / 255) * 100).round()}%)',
         );
       } else {
-        // 🔌 Xử lý relay thông thường
+        // 🔌 Xử lý relay thông thường - ưu tiên broker riêng của thiết bị
         _devices[index] = device.copyWith(state: !currentState);
 
-        if (_mqttProvider != null) {
-          String topic = _devices[index].mqttTopic;
-          String message = (!currentState) ? '1' : '0';
+        String topic = _devices[index].finalMqttTopic;
+        String message = (!currentState) ? '1' : '0';
+
+        print(
+          '🔍 DEBUG: Device ${device.name} - hasCustomMqttConfig: ${device.hasCustomMqttConfig}',
+        );
+        print('🔍 DEBUG: mqttConfig is null: ${device.mqttConfig == null}');
+        if (device.mqttConfig != null) {
+          print(
+            '🔍 DEBUG: useCustomConfig: ${device.mqttConfig!.useCustomConfig}',
+          );
+          print('🔍 DEBUG: broker: ${device.mqttConfig!.broker}');
+          print('🔍 DEBUG: port: ${device.mqttConfig!.port}');
+        }
+
+        final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
+          device,
+          message,
+        );
+
+        if (sentViaDeviceMqtt) {
+          print('✅ SUCCESS: Device MQTT - $topic -> $message (Custom Broker)');
+        } else if (_mqttProvider != null) {
           _mqttProvider!.publish(topic, message);
-          print('📡 MQTT: $topic -> $message');
+          print('✅ SUCCESS: Global MQTT - $topic -> $message (Global Broker)');
+        } else {
+          print('❌ FAILED: No MQTT provider available');
         }
 
         print('🔄 Toggled ${device.name}: ${!currentState ? "ON" : "OFF"}');

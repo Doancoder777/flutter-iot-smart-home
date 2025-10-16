@@ -6,7 +6,9 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../../models/device_model.dart';
+import '../../models/device_mqtt_config.dart';
 import '../../providers/device_provider.dart';
+import '../../config/app_colors.dart';
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key});
@@ -32,6 +34,16 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   double _servoOffValue = 0.0; // Giá trị khi "tắt" servo
   bool _isServo360 = true; // Chế độ servo 360 độ
   bool _servoEnabled = false; // Trạng thái bật/tắt servo
+
+  // 📡 MQTT Configuration
+  bool _useCustomMqtt = false;
+  final _mqttBrokerController = TextEditingController();
+  final _mqttPortController = TextEditingController(text: '8883');
+  final _mqttUsernameController = TextEditingController();
+  final _mqttPasswordController = TextEditingController();
+  final _mqttCustomTopicController = TextEditingController();
+  bool _mqttUseSsl = true;
+  bool _showMqttPassword = false;
 
   // Device type and room options
   // 📋 Sử dụng extension từ DeviceType thay vì hardcode
@@ -90,6 +102,11 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   void dispose() {
     _nameController.dispose();
     _roomController.dispose();
+    _mqttBrokerController.dispose();
+    _mqttPortController.dispose();
+    _mqttUsernameController.dispose();
+    _mqttPasswordController.dispose();
+    _mqttCustomTopicController.dispose();
     super.dispose();
   }
 
@@ -135,81 +152,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
       _customImagePath = null;
       _selectedIcon = _deviceTypeIcons[_selectedType]?.first;
     });
-  }
-
-  Future<void> _addDevice() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (_selectedIcon == null && _customImagePath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chọn biểu tượng hoặc ảnh cho thiết bị'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final deviceProvider = Provider.of<DeviceProvider>(
-        context,
-        listen: false,
-      );
-
-      final success = await deviceProvider.addDevice(
-        name: _nameController.text.trim(),
-        type: _selectedType,
-        room: _roomController.text.trim(),
-        icon: _selectedIcon,
-        initialValue: _selectedType == DeviceType.servo
-            ? _servoValue.round()
-            : _selectedType == DeviceType.fan
-            ? _fanSpeed
-                  .round() // 🌪️ FAN SPEED
-            : null,
-      );
-
-      if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Đã thêm thiết bị "${_nameController.text.trim()}" thành công',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(context).pop();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể thêm thiết bị. Vui lòng thử lại.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   @override
@@ -955,6 +897,186 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                   ),
                 ),
               ),
+
+              // 📡 MQTT Configuration Section
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.wifi, color: AppColors.primary, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Cấu hình MQTT',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                                Text(
+                                  'Thiết bị sẽ sử dụng broker MQTT riêng (tùy chọn)',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: _useCustomMqtt,
+                            onChanged: (value) {
+                              setState(() {
+                                _useCustomMqtt = value;
+                              });
+                            },
+                            activeColor: AppColors.primary,
+                          ),
+                        ],
+                      ),
+
+                      if (_useCustomMqtt) ...[
+                        const SizedBox(height: 16),
+                        const Divider(),
+                        const SizedBox(height: 16),
+
+                        // Broker URL
+                        TextFormField(
+                          controller: _mqttBrokerController,
+                          decoration: const InputDecoration(
+                            labelText: 'Broker URL *',
+                            hintText: 'mqtt.example.com',
+                            prefixIcon: Icon(Icons.cloud),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (_useCustomMqtt &&
+                                (value == null || value.isEmpty)) {
+                              return 'Vui lòng nhập broker URL';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Port
+                        TextFormField(
+                          controller: _mqttPortController,
+                          decoration: const InputDecoration(
+                            labelText: 'Port *',
+                            hintText: '8883',
+                            prefixIcon: Icon(Icons.numbers),
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (_useCustomMqtt) {
+                              if (value == null || value.isEmpty) {
+                                return 'Vui lòng nhập port';
+                              }
+                              final port = int.tryParse(value);
+                              if (port == null || port <= 0 || port > 65535) {
+                                return 'Port phải từ 1-65535';
+                              }
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // SSL Toggle
+                        Row(
+                          children: [
+                            Icon(Icons.security, color: AppColors.primary),
+                            const SizedBox(width: 12),
+                            const Text('Sử dụng SSL/TLS'),
+                            const Spacer(),
+                            Switch(
+                              value: _mqttUseSsl,
+                              onChanged: (value) {
+                                setState(() {
+                                  _mqttUseSsl = value;
+                                });
+                              },
+                              activeColor: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Username
+                        TextFormField(
+                          controller: _mqttUsernameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Username (tùy chọn)',
+                            hintText: 'username',
+                            prefixIcon: Icon(Icons.person),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Password
+                        TextFormField(
+                          controller: _mqttPasswordController,
+                          obscureText: !_showMqttPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Password (tùy chọn)',
+                            hintText: 'password',
+                            prefixIcon: const Icon(Icons.lock),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _showMqttPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showMqttPassword = !_showMqttPassword;
+                                });
+                              },
+                            ),
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Custom Topic
+                        TextFormField(
+                          controller: _mqttCustomTopicController,
+                          decoration: const InputDecoration(
+                            labelText: 'Topic tùy chỉnh (tùy chọn)',
+                            hintText: 'my_custom/topic',
+                            prefixIcon: Icon(Icons.topic),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Để trống để sử dụng topic mặc định: ${_nameController.text.toLowerCase().replaceAll(' ', '_')}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 32),
             ],
           ),
@@ -1064,6 +1186,95 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         child: Text(label, style: const TextStyle(fontSize: 12)),
       ),
     );
+  }
+
+  Future<void> _addDevice() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedIcon == null && _customImagePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn biểu tượng hoặc ảnh cho thiết bị'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Tạo cấu hình MQTT nếu cần
+      DeviceMqttConfig? mqttConfig;
+      if (_useCustomMqtt) {
+        mqttConfig = DeviceMqttConfig(
+          deviceId: '', // Sẽ được set sau khi tạo device
+          broker: _mqttBrokerController.text,
+          port: int.parse(_mqttPortController.text),
+          username: _mqttUsernameController.text.isEmpty
+              ? null
+              : _mqttUsernameController.text,
+          password: _mqttPasswordController.text.isEmpty
+              ? null
+              : _mqttPasswordController.text,
+          useSsl: _mqttUseSsl,
+          useCustomConfig: true,
+          customTopic: _mqttCustomTopicController.text.isEmpty
+              ? null
+              : _mqttCustomTopicController.text,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+      }
+
+      // Tạo thiết bị mới
+      final deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+      final device = Device(
+        id: deviceId,
+        name: _nameController.text.trim(),
+        type: _selectedType,
+        room: _roomController.text.trim(),
+        icon: _selectedIcon,
+        avatarPath: _customImagePath,
+        mqttConfig: mqttConfig?.copyWith(deviceId: deviceId),
+        createdAt: DateTime.now(),
+        lastUpdated: DateTime.now(),
+      );
+
+      // Lưu thiết bị
+      final deviceProvider = Provider.of<DeviceProvider>(
+        context,
+        listen: false,
+      );
+      await deviceProvider.addDevice(device);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Đã thêm thiết bị ${device.name} thành công!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi thêm thiết bị: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _showDeviceTypeInfo(DeviceType type) {
