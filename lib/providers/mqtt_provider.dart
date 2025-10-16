@@ -87,7 +87,14 @@ class MqttProvider extends ChangeNotifier {
     _safeNotify();
 
     // Use custom config if available
-    final success = await _mqttService.connect(customConfig: _currentConfig);
+    if (_currentConfig == null) {
+      _connectionStatus = 'No MQTT config available';
+      _isConnected = false;
+      _safeNotify();
+      return;
+    }
+
+    final success = await _mqttService.connect(_currentConfig!);
 
     if (!success) {
       _connectionStatus = 'Connection Failed';

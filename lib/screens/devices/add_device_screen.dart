@@ -35,8 +35,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   bool _isServo360 = true; // Chế độ servo 360 độ
   bool _servoEnabled = false; // Trạng thái bật/tắt servo
 
-  // 📡 MQTT Configuration
-  bool _useCustomMqtt = false;
+  // 📡 MQTT Configuration - BẮT BUỘC cho mọi thiết bị
   final _mqttBrokerController = TextEditingController();
   final _mqttPortController = TextEditingController(text: '8883');
   final _mqttUsernameController = TextEditingController();
@@ -918,7 +917,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Cấu hình MQTT',
+                                  'Cấu hình MQTT (Bắt buộc)',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -926,7 +925,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Thiết bị sẽ sử dụng broker MQTT riêng (tùy chọn)',
+                                  'Mọi thiết bị phải có cấu hình MQTT để hoạt động',
                                   style: TextStyle(
                                     color: Colors.grey[600],
                                     fontSize: 14,
@@ -935,143 +934,125 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 16),
+
+                      // Broker URL
+                      TextFormField(
+                        controller: _mqttBrokerController,
+                        decoration: const InputDecoration(
+                          labelText: 'Broker URL *',
+                          hintText: 'mqtt.example.com',
+                          prefixIcon: Icon(Icons.cloud),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Vui lòng nhập broker URL';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Port
+                      TextFormField(
+                        controller: _mqttPortController,
+                        decoration: const InputDecoration(
+                          labelText: 'Port *',
+                          hintText: '8883',
+                          prefixIcon: Icon(Icons.numbers),
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Vui lòng nhập port';
+                          }
+                          final port = int.tryParse(value);
+                          if (port == null || port <= 0 || port > 65535) {
+                            return 'Port phải từ 1-65535';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // SSL Toggle
+                      Row(
+                        children: [
+                          Icon(Icons.security, color: AppColors.primary),
+                          const SizedBox(width: 12),
+                          const Text('Sử dụng SSL/TLS'),
+                          const Spacer(),
                           Switch(
-                            value: _useCustomMqtt,
+                            value: _mqttUseSsl,
                             onChanged: (value) {
                               setState(() {
-                                _useCustomMqtt = value;
+                                _mqttUseSsl = value;
                               });
                             },
                             activeColor: AppColors.primary,
                           ),
                         ],
                       ),
+                      const SizedBox(height: 16),
 
-                      if (_useCustomMqtt) ...[
-                        const SizedBox(height: 16),
-                        const Divider(),
-                        const SizedBox(height: 16),
-
-                        // Broker URL
-                        TextFormField(
-                          controller: _mqttBrokerController,
-                          decoration: const InputDecoration(
-                            labelText: 'Broker URL *',
-                            hintText: 'mqtt.example.com',
-                            prefixIcon: Icon(Icons.cloud),
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            if (_useCustomMqtt &&
-                                (value == null || value.isEmpty)) {
-                              return 'Vui lòng nhập broker URL';
-                            }
-                            return null;
-                          },
+                      // Username
+                      TextFormField(
+                        controller: _mqttUsernameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Username (tùy chọn)',
+                          hintText: 'username',
+                          prefixIcon: Icon(Icons.person),
+                          border: OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 16),
 
-                        // Port
-                        TextFormField(
-                          controller: _mqttPortController,
-                          decoration: const InputDecoration(
-                            labelText: 'Port *',
-                            hintText: '8883',
-                            prefixIcon: Icon(Icons.numbers),
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (_useCustomMqtt) {
-                              if (value == null || value.isEmpty) {
-                                return 'Vui lòng nhập port';
-                              }
-                              final port = int.tryParse(value);
-                              if (port == null || port <= 0 || port > 65535) {
-                                return 'Port phải từ 1-65535';
-                              }
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // SSL Toggle
-                        Row(
-                          children: [
-                            Icon(Icons.security, color: AppColors.primary),
-                            const SizedBox(width: 12),
-                            const Text('Sử dụng SSL/TLS'),
-                            const Spacer(),
-                            Switch(
-                              value: _mqttUseSsl,
-                              onChanged: (value) {
-                                setState(() {
-                                  _mqttUseSsl = value;
-                                });
-                              },
-                              activeColor: AppColors.primary,
+                      // Password
+                      TextFormField(
+                        controller: _mqttPasswordController,
+                        obscureText: !_showMqttPassword,
+                        decoration: InputDecoration(
+                          labelText: 'Password (tùy chọn)',
+                          hintText: 'password',
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showMqttPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
                             ),
-                          ],
+                            onPressed: () {
+                              setState(() {
+                                _showMqttPassword = !_showMqttPassword;
+                              });
+                            },
+                          ),
+                          border: const OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 16),
 
-                        // Username
-                        TextFormField(
-                          controller: _mqttUsernameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Username (tùy chọn)',
-                            hintText: 'username',
-                            prefixIcon: Icon(Icons.person),
-                            border: OutlineInputBorder(),
-                          ),
+                      // Custom Topic
+                      TextFormField(
+                        controller: _mqttCustomTopicController,
+                        decoration: const InputDecoration(
+                          labelText: 'Topic tùy chỉnh (tùy chọn)',
+                          hintText: 'my_custom/topic',
+                          prefixIcon: Icon(Icons.topic),
+                          border: OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Password
-                        TextFormField(
-                          controller: _mqttPasswordController,
-                          obscureText: !_showMqttPassword,
-                          decoration: InputDecoration(
-                            labelText: 'Password (tùy chọn)',
-                            hintText: 'password',
-                            prefixIcon: const Icon(Icons.lock),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _showMqttPassword
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _showMqttPassword = !_showMqttPassword;
-                                });
-                              },
-                            ),
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Custom Topic
-                        TextFormField(
-                          controller: _mqttCustomTopicController,
-                          decoration: const InputDecoration(
-                            labelText: 'Topic tùy chỉnh (tùy chọn)',
-                            hintText: 'my_custom/topic',
-                            prefixIcon: Icon(Icons.topic),
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Để trống để sử dụng topic mặc định: ${_nameController.text.toLowerCase().replaceAll(' ', '_')}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Để trống để sử dụng topic mặc định: ${_nameController.text.toLowerCase().replaceAll(' ', '_')}',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
@@ -1206,28 +1187,25 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     });
 
     try {
-      // Tạo cấu hình MQTT nếu cần
-      DeviceMqttConfig? mqttConfig;
-      if (_useCustomMqtt) {
-        mqttConfig = DeviceMqttConfig(
-          deviceId: '', // Sẽ được set sau khi tạo device
-          broker: _mqttBrokerController.text,
-          port: int.parse(_mqttPortController.text),
-          username: _mqttUsernameController.text.isEmpty
-              ? null
-              : _mqttUsernameController.text,
-          password: _mqttPasswordController.text.isEmpty
-              ? null
-              : _mqttPasswordController.text,
-          useSsl: _mqttUseSsl,
-          useCustomConfig: true,
-          customTopic: _mqttCustomTopicController.text.isEmpty
-              ? null
-              : _mqttCustomTopicController.text,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-      }
+      // Tạo cấu hình MQTT (bắt buộc)
+      final mqttConfig = DeviceMqttConfig(
+        deviceId: '', // Sẽ được set sau khi tạo device
+        broker: _mqttBrokerController.text,
+        port: int.parse(_mqttPortController.text),
+        username: _mqttUsernameController.text.isEmpty
+            ? null
+            : _mqttUsernameController.text,
+        password: _mqttPasswordController.text.isEmpty
+            ? null
+            : _mqttPasswordController.text,
+        useSsl: _mqttUseSsl,
+        useCustomConfig: true,
+        customTopic: _mqttCustomTopicController.text.isEmpty
+            ? null
+            : _mqttCustomTopicController.text,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
 
       // Tạo thiết bị mới
       final deviceId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -1238,7 +1216,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         room: _roomController.text.trim(),
         icon: _selectedIcon,
         avatarPath: _customImagePath,
-        mqttConfig: mqttConfig?.copyWith(deviceId: deviceId),
+        mqttConfig: mqttConfig.copyWith(deviceId: deviceId),
         createdAt: DateTime.now(),
         lastUpdated: DateTime.now(),
       );

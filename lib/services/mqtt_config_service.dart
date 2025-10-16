@@ -1,14 +1,13 @@
 import '../models/mqtt_config.dart';
 import '../services/local_storage_service.dart';
-import '../config/mqtt_config.dart' as global;
 
 class MqttConfigService {
   final LocalStorageService _storageService;
 
   MqttConfigService(this._storageService);
 
-  /// Load MQTT config for specific user, fallback to default if not found
-  Future<MqttConfig> loadUserMqttConfig(String? userId) async {
+  /// Load MQTT config for specific user
+  Future<MqttConfig?> loadUserMqttConfig(String? userId) async {
     try {
       final configData = _storageService.getMqttConfig(userId: userId);
 
@@ -16,14 +15,12 @@ class MqttConfigService {
         print('📡 Loading custom MQTT config for user: $userId');
         return MqttConfig.fromJson(configData);
       } else {
-        print(
-          '📡 No custom MQTT config found for user: $userId, using default',
-        );
-        return _getDefaultConfig();
+        print('📡 No MQTT config found for user: $userId');
+        return null; // Không có default config
       }
     } catch (e) {
       print('❌ Error loading MQTT config: $e');
-      return _getDefaultConfig();
+      return null; // Không có default config
     }
   }
 
@@ -36,11 +33,6 @@ class MqttConfigService {
       print('❌ Error saving MQTT config: $e');
       rethrow;
     }
-  }
-
-  /// Get default MQTT configuration từ file cấu hình tập trung
-  MqttConfig _getDefaultConfig() {
-    return MqttConfig.fromJson(global.MqttConfig.toJson());
   }
 
   /// Clear MQTT config for user

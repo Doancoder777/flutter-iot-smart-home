@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import '../config/mqtt_config.dart';
 import '../config/constants.dart';
 import '../models/mqtt_config.dart' as custom;
 
@@ -32,19 +31,16 @@ class MqttService {
     }
   }
 
-  Future<bool> connect({custom.MqttConfig? customConfig}) async {
+  Future<bool> connect(custom.MqttConfig config) async {
     try {
-      // Use custom config if provided, otherwise use default
-      final config = customConfig ?? _getDefaultConfig();
-
-      // Tạo client với unique ID từ config tập trung
-      final uniqueId = MqttConfig.generateUniqueClientId();
+      // Tạo client với unique ID
+      final uniqueId = _generateUniqueClientId();
       client = MqttServerClient.withPort(config.broker, uniqueId, config.port);
 
       // Configure client
       client.logging(on: false);
-      client.keepAlivePeriod = MqttConfig.keepAlivePeriod;
-      client.connectTimeoutPeriod = MqttConfig.connectionTimeout * 1000;
+      client.keepAlivePeriod = 30; // 30 seconds
+      client.connectTimeoutPeriod = 10 * 1000; // 10 seconds
       client.autoReconnect = true;
       client.resubscribeOnAutoReconnect = true;
 
@@ -72,7 +68,7 @@ class MqttService {
           .withWillQos(MqttQos.atLeastOnce)
           .withWillRetain()
           .startClean()
-          .keepAliveFor(MqttConfig.keepAlivePeriod);
+          .keepAliveFor(30); // 30 seconds
 
       client.connectionMessage = connMessage;
 
@@ -239,8 +235,10 @@ class MqttService {
     );
   }
 
-  /// Get default MQTT config từ file cấu hình tập trung
-  custom.MqttConfig _getDefaultConfig() {
-    return custom.MqttConfig.fromJson(MqttConfig.toJson());
+  /// Generate unique client ID
+  String _generateUniqueClientId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final microseconds = DateTime.now().microsecond % 1000;
+    return 'flutter_smart_home_${timestamp}_$microseconds';
   }
 }

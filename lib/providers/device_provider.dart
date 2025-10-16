@@ -195,7 +195,7 @@ class DeviceProvider extends ChangeNotifier {
         print('🔍 DEBUG: Global Topic: $topic');
       }
 
-      // Thử gửi qua broker riêng của thiết bị trước
+      // Gửi qua broker riêng của thiết bị
       final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
         device,
         message,
@@ -203,12 +203,8 @@ class DeviceProvider extends ChangeNotifier {
 
       if (sentViaDeviceMqtt) {
         print('✅ SUCCESS: Device MQTT - $topic -> $message (Custom Broker)');
-      } else if (_mqttProvider != null) {
-        // Fallback về broker global
-        _mqttProvider!.publish(topic, message);
-        print('✅ SUCCESS: Global MQTT - $topic -> $message (Global Broker)');
       } else {
-        print('❌ FAILED: No MQTT provider available');
+        print('❌ FAILED: No MQTT config for device ${device.name}');
       }
 
       _safeNotify();
@@ -236,7 +232,7 @@ class DeviceProvider extends ChangeNotifier {
         message = value.toString();
       }
 
-      // Thử gửi qua broker riêng của thiết bị trước
+      // Gửi qua broker riêng của thiết bị
       final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
         device,
         message,
@@ -244,10 +240,8 @@ class DeviceProvider extends ChangeNotifier {
 
       if (sentViaDeviceMqtt) {
         print('📡 Device MQTT: $topic -> $message');
-      } else if (_mqttProvider != null) {
-        // Fallback về broker global
-        _mqttProvider!.publish(topic, message);
-        print('📡 Global MQTT: $topic -> $message');
+      } else {
+        print('❌ FAILED: No MQTT config for device ${device.name}');
       }
 
       _safeNotify();
@@ -323,13 +317,8 @@ class DeviceProvider extends ChangeNotifier {
           print(
             '✅ SUCCESS: Device MQTT Fan - $topic -> $message (Custom Broker)',
           );
-        } else if (_mqttProvider != null) {
-          _mqttProvider!.publish(topic, message);
-          print(
-            '✅ SUCCESS: Global MQTT Fan - $topic -> $message (Global Broker)',
-          );
         } else {
-          print('❌ FAILED: No MQTT provider available');
+          print('❌ FAILED: No MQTT config for device ${device.name}');
         }
 
         print(
@@ -361,11 +350,8 @@ class DeviceProvider extends ChangeNotifier {
 
         if (sentViaDeviceMqtt) {
           print('✅ SUCCESS: Device MQTT - $topic -> $message (Custom Broker)');
-        } else if (_mqttProvider != null) {
-          _mqttProvider!.publish(topic, message);
-          print('✅ SUCCESS: Global MQTT - $topic -> $message (Global Broker)');
         } else {
-          print('❌ FAILED: No MQTT provider available');
+          print('❌ FAILED: No MQTT config for device ${device.name}');
         }
 
         print('🔄 Toggled ${device.name}: ${!currentState ? "ON" : "OFF"}');
