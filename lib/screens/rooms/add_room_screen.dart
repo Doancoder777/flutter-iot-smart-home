@@ -50,6 +50,19 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
     super.dispose();
   }
 
+  /// 🔑 Generate device code (6 ký tự)
+  String _generateDeviceCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    String result = '';
+
+    for (int i = 0; i < 6; i++) {
+      result += chars[(random + i) % chars.length];
+    }
+
+    return result;
+  }
+
   Future<void> _addRoomWithDevice() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -65,8 +78,10 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
 
       // Create a basic device for this room to make it appear in rooms list
       final device = Device(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: generateDeviceId(),
         name: 'Đèn ${_roomNameController.text.trim()}',
+        keyName: normalizeDeviceName('Đèn ${_roomNameController.text.trim()}'),
+        deviceCode: _generateDeviceCode(), // 🔑 THÊM DEVICE CODE
         type: DeviceType.relay,
         room: _roomNameController.text.trim(),
         icon: _selectedIcon,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/sensor_type.dart';
-import '../../models/sensor_data.dart';
 import '../../models/device_mqtt_config.dart';
 import '../../providers/sensor_provider.dart';
 import '../../config/app_colors.dart';
@@ -27,6 +26,10 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     text: 'Không',
   ); // Mặc định cho boolean
 
+  // 🔑 Device Code Configuration
+  final _deviceCodeController = TextEditingController();
+  bool _autoGenerateCode = true;
+
   // 📡 MQTT Configuration - BẮT BUỘC cho mọi cảm biến
   final _mqttBrokerController = TextEditingController();
   final _mqttPortController = TextEditingController(text: '8883');
@@ -42,12 +45,50 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Auto-generate device code if checkbox is checked
+    if (_autoGenerateCode) {
+      _deviceCodeController.text = _generateDeviceCode();
+    }
+  }
+
+  /// 🔑 GENERATE DEVICE CODE (6 KÝ TỰ)
+  String _generateDeviceCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    String result = '';
+
+    for (int i = 0; i < 6; i++) {
+      result += chars[(random + i) % chars.length];
+    }
+
+    return result;
+  }
+
+  /// 📡 GENERATE MQTT TOPIC
+  void _generateMqttTopic() {
+    if (_deviceCodeController.text.isNotEmpty) {
+      _mqttTopicController.text =
+          'smart_home/devices/${_deviceCodeController.text}/cmd';
+    } else {
+      // Auto-generate device code if not exists
+      _deviceCodeController.text = _generateDeviceCode();
+      _mqttTopicController.text =
+          'smart_home/devices/${_deviceCodeController.text}/cmd';
+    }
+  }
+
+  @override
   void dispose() {
     _displayNameController.dispose();
     _mqttTopicController.dispose();
     _maxValueController.dispose();
     _trueLabelController.dispose();
     _falseLabelController.dispose();
+
+    // Dispose device code controller
+    _deviceCodeController.dispose();
 
     // Dispose MQTT controllers
     _mqttBrokerController.dispose();
@@ -78,6 +119,10 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
 
             // Display Name
             _buildDisplayNameField(),
+            const SizedBox(height: 16),
+
+            // 🔑 Device Code Field
+            _buildDeviceCodeField(),
             const SizedBox(height: 16),
 
             // MQTT Topic
@@ -185,13 +230,69 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     );
   }
 
+  Widget _buildDeviceCodeField() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: _deviceCodeController,
+            enabled: !_autoGenerateCode,
+            decoration: InputDecoration(
+              labelText: 'Mã cảm biến',
+              hintText: 'Nhập mã cảm biến (6 ký tự)',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.vpn_key),
+              suffixIcon: _autoGenerateCode
+                  ? const Icon(Icons.auto_awesome, color: Colors.blue)
+                  : null,
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Vui lòng nhập mã cảm biến';
+              }
+              if (value.length != 6) {
+                return 'Mã cảm biến phải có 6 ký tự';
+              }
+              return null;
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: _autoGenerateCode,
+              onChanged: (bool? value) {
+                setState(() {
+                  _autoGenerateCode = value ?? false;
+                  if (_autoGenerateCode) {
+                    _deviceCodeController.text = _generateDeviceCode();
+                  } else {
+                    _deviceCodeController.text = '';
+                  }
+                });
+              },
+            ),
+            const Text(
+              'Tự động\ntạo mã',
+              style: TextStyle(fontSize: 10),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildMqttTopicField() {
     return TextFormField(
       controller: _mqttTopicController,
       decoration: InputDecoration(
         labelText: 'MQTT Topic',
-        hintText:
-            _selectedSensorType?.defaultMqttTopic ?? 'smart_home/sensors/...',
+        hintText: _deviceCodeController.text.isNotEmpty
+            ? 'smart_home/devices/${_deviceCodeController.text}/cmd'
+            : 'smart_home/devices/XXXXXX/cmd',
         border: const OutlineInputBorder(),
         suffixIcon: IconButton(
           icon: const Icon(Icons.auto_fix_high),
@@ -204,7 +305,7 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
           return 'Vui lòng nhập MQTT topic';
         }
         if (!value.contains('/')) {
-          return 'Topic phải có định dạng: prefix/sensor_name';
+          return 'Topic phải có định dạng: smart_home/devices/XXXXXX/cmd';
         }
         return null;
       },
@@ -675,28 +776,6 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
     }
   }
 
-  void _generateMqttTopic() {
-    if (_selectedSensorType == null) return;
-
-    final sensorProvider = Provider.of<SensorProvider>(context, listen: false);
-    final existingSensors = sensorProvider.userSensors;
-
-    // Generate unique topic
-    var counter = 1;
-    String topic;
-
-    do {
-      if (counter == 1) {
-        topic = '${_selectedSensorType!.defaultMqttTopic}/user';
-      } else {
-        topic = '${_selectedSensorType!.defaultMqttTopic}/user/$counter';
-      }
-      counter++;
-    } while (existingSensors.any((s) => s.mqttTopic == topic));
-
-    _mqttTopicController.text = topic;
-  }
-
   void _showIconPicker() {
     showDialog(
       context: context,
@@ -869,9 +948,9 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
             : _mqttPasswordController.text,
         useSsl: _mqttUseSsl,
         useCustomConfig: true,
-        customTopic: _mqttCustomTopicController.text.isEmpty
+        customTopic: _deviceCodeController.text.isEmpty
             ? null
-            : _mqttCustomTopicController.text,
+            : 'smart_home/devices/${_deviceCodeController.text}/cmd',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -889,6 +968,7 @@ class _AddSensorScreenState extends State<AddSensorScreen> {
         sensorTypeId: _selectedSensorType!.id,
         displayName: _displayNameController.text.trim(),
         customMqttTopic: _mqttTopicController.text.trim(),
+        deviceCode: _deviceCodeController.text.trim(),
         configuration: configuration,
         mqttConfig: mqttConfig,
       );

@@ -3,6 +3,8 @@ import 'device_mqtt_config.dart';
 class Device {
   final String id;
   final String name;
+  final String keyName; // 🎯 TÊN CHUẨN HÓA CHO AI VOICE CONTROL
+  final String deviceCode; // 🔑 MÃ THIẾT BỊ (6 KÝ TỰ)
   final DeviceType type;
   bool state;
   int? value; // For servo angles (0-180)
@@ -20,6 +22,8 @@ class Device {
   Device({
     required this.id,
     required this.name,
+    required this.keyName, // 🎯 THÊM PARAMETER BẮT BUỘC
+    required this.deviceCode, // 🔑 THÊM PARAMETER BẮT BUỘC
     required this.type,
     this.state = false,
     this.value,
@@ -37,6 +41,12 @@ class Device {
     return Device(
       id: json['id'],
       name: json['name'],
+      keyName:
+          json['keyName'] ??
+          normalizeDeviceName(
+            json['name'],
+          ), // 🎯 THÊM VÀO fromJson VỚI FALLBACK
+      deviceCode: json['deviceCode'] ?? '', // 🔑 THÊM VÀO fromJson VỚI FALLBACK
       type: DeviceType.values.firstWhere(
         (e) => e.toString() == 'DeviceType.${json['type']}',
         orElse: () => DeviceType.relay,
@@ -64,6 +74,8 @@ class Device {
     return {
       'id': id,
       'name': name,
+      'keyName': keyName, // 🎯 THÊM VÀO toJson
+      'deviceCode': deviceCode, // 🔑 THÊM VÀO toJson
       'type': type.toString().split('.').last,
       'state': state,
       'value': value,
@@ -81,6 +93,8 @@ class Device {
   Device copyWith({
     String? id,
     String? name,
+    String? keyName, // 🎯 THÊM VÀO copyWith
+    String? deviceCode, // 🔑 THÊM VÀO copyWith
     DeviceType? type,
     bool? state,
     int? value,
@@ -96,6 +110,8 @@ class Device {
     return Device(
       id: id ?? this.id,
       name: name ?? this.name,
+      keyName: keyName ?? this.keyName, // 🎯 THÊM VÀO copyWith
+      deviceCode: deviceCode ?? this.deviceCode, // 🔑 THÊM VÀO copyWith
       type: type ?? this.type,
       state: state ?? this.state,
       value: value ?? this.value,
@@ -279,6 +295,40 @@ extension DeviceTypeExtension on DeviceType {
         ];
     }
   }
+}
+
+/// 🎯 CHUẨN HÓA TÊN THIẾT BỊ CHO AI VOICE CONTROL
+/// Chuyển "Đèn phòng khách" → "den_phong_khach"
+String normalizeDeviceName(String displayName) {
+  // Loại bỏ dấu tiếng Việt
+  String normalized = displayName
+      .toLowerCase()
+      .replaceAll(RegExp(r'[àáạảãâầấậẩẫăằắặẳẵ]'), 'a')
+      .replaceAll(RegExp(r'[èéẹẻẽêềếệểễ]'), 'e')
+      .replaceAll(RegExp(r'[ìíịỉĩ]'), 'i')
+      .replaceAll(RegExp(r'[òóọỏõôồốộổỗơờớợởỡ]'), 'o')
+      .replaceAll(RegExp(r'[ùúụủũưừứựửữ]'), 'u')
+      .replaceAll(RegExp(r'[ỳýỵỷỹ]'), 'y')
+      .replaceAll(RegExp(r'[đ]'), 'd')
+      .replaceAll(RegExp(r'[^a-z0-9\s]'), '') // Loại bỏ ký tự đặc biệt
+      .replaceAll(RegExp(r'\s+'), '_') // Thay space = _
+      .replaceAll(RegExp(r'_+'), '_') // Loại bỏ _ liên tiếp
+      .replaceAll(RegExp(r'^_|_$'), ''); // Loại bỏ _ đầu/cuối
+
+  return normalized.isNotEmpty ? normalized : 'device';
+}
+
+/// 🎯 TẠO ID NGẪU NHIÊN CHO THIẾT BỊ
+String generateDeviceId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  final random = DateTime.now().millisecondsSinceEpoch;
+  String result = '';
+
+  for (int i = 0; i < 10; i++) {
+    result += chars[(random + i) % chars.length];
+  }
+
+  return result;
 }
 
 class DevicePreset {

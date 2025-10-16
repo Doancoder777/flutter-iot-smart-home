@@ -172,7 +172,8 @@ class DeviceProvider extends ChangeNotifier {
       // Gửi lệnh qua MQTT - ưu tiên broker riêng của thiết bị
       final device = _devices[index];
       final topic = device.finalMqttTopic;
-      final message = state ? '1' : '0';
+      final message =
+          '{"name": "${device.keyName}", "action": "${state ? "turn_on" : "turn_off"}"}';
 
       print(
         '🔍 DEBUG: Device ${device.name} - hasCustomMqttConfig: ${device.hasCustomMqttConfig}',
@@ -226,10 +227,12 @@ class DeviceProvider extends ChangeNotifier {
 
       // Quạt gửi JSON với tốc độ
       if (device.type == DeviceType.fan) {
-        message = '{"command": "set_speed", "speed": $value}';
+        message =
+            '{"name": "${device.keyName}", "command": "set_speed", "speed": $value}';
       } else {
-        // Servo thông thường gửi số đơn giản
-        message = value.toString();
+        // Servo thông thường gửi JSON với góc
+        message =
+            '{"name": "${device.keyName}", "action": "set_angle", "angle": $value}';
       }
 
       // Gửi qua broker riêng của thiết bị
@@ -329,7 +332,8 @@ class DeviceProvider extends ChangeNotifier {
         _devices[index] = device.copyWith(state: !currentState);
 
         String topic = _devices[index].finalMqttTopic;
-        String message = (!currentState) ? '1' : '0';
+        String message =
+            '{"name": "${device.keyName}", "action": "${(!currentState) ? "turn_on" : "turn_off"}"}';
 
         print(
           '🔍 DEBUG: Device ${device.name} - hasCustomMqttConfig: ${device.hasCustomMqttConfig}',

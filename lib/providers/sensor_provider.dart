@@ -216,31 +216,6 @@ class SensorProvider extends ChangeNotifier {
     print('🧹 SensorProvider: Cleared user data');
   }
 
-  /// Thêm sensor mới cho user
-  Future<UserSensor> addSensor({
-    required String sensorTypeId,
-    required String displayName,
-    String? customMqttTopic,
-    Map<String, dynamic>? configuration,
-    DeviceMqttConfig? mqttConfig,
-  }) async {
-    if (_currentUserId == null) {
-      throw Exception('No user logged in');
-    }
-
-    final newSensor = await _sensorConfigService.addUserSensor(
-      userId: _currentUserId!,
-      sensorTypeId: sensorTypeId,
-      displayName: displayName,
-      customMqttTopic: customMqttTopic,
-      configuration: configuration,
-      mqttConfig: mqttConfig,
-    );
-
-    await _loadUserSensors();
-    return newSensor;
-  }
-
   /// Cập nhật sensor
   Future<void> updateSensor(UserSensor sensor) async {
     if (_currentUserId == null) return;
@@ -531,6 +506,51 @@ class SensorProvider extends ChangeNotifier {
       return _history;
     }
     return _history.sublist(_history.length - count);
+  }
+
+  /// Add new user sensor
+  Future<void> addSensor({
+    required String sensorTypeId,
+    required String displayName,
+    required String customMqttTopic,
+    required String deviceCode,
+    Map<String, dynamic>? configuration,
+    DeviceMqttConfig? mqttConfig,
+  }) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user set');
+    }
+
+    final sensorId = 'sensor_${DateTime.now().millisecondsSinceEpoch}';
+
+    final userSensor = UserSensor(
+      id: sensorId,
+      userId: _currentUserId!,
+      sensorTypeId: sensorTypeId,
+      displayName: displayName,
+      mqttTopic: customMqttTopic,
+      deviceCode: deviceCode,
+      isActive: true,
+      configuration: configuration,
+      displayConfig: configuration?['displayConfig'] != null
+          ? DisplayConfig.fromJson(configuration!['displayConfig'])
+          : null,
+      customIcon: configuration?['customIcon'],
+      mqttConfig: mqttConfig,
+      createdAt: DateTime.now(),
+    );
+
+    _userSensors.add(userSensor);
+    // Save to storage - using sensor history method as fallback
+    final jsonList = _userSensors.map((sensor) => sensor.toJson()).toList();
+    await _storageService.saveSensorHistory(
+      'user_sensors',
+      jsonList,
+      userId: _currentUserId,
+    );
+    _safeNotify();
+
+    print('✅ Added sensor: $displayName with device code: $deviceCode');
   }
 
   void _safeNotify() {

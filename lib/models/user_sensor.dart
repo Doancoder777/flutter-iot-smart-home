@@ -7,6 +7,7 @@ class UserSensor {
   final String sensorTypeId;
   final String displayName;
   final String mqttTopic;
+  final String deviceCode; // 🔑 MÃ CẢM BIẾN (6 KÝ TỰ)
   final bool isActive;
   final Map<String, dynamic>? configuration;
   final DisplayConfig? displayConfig; // 🆕 Cấu hình hiển thị
@@ -22,6 +23,7 @@ class UserSensor {
     required this.sensorTypeId,
     required this.displayName,
     required this.mqttTopic,
+    required this.deviceCode, // 🔑 THÊM PARAMETER BẮT BUỘC
     this.isActive = true,
     this.configuration,
     this.displayConfig,
@@ -114,6 +116,7 @@ class UserSensor {
     String? sensorTypeId,
     String? displayName,
     String? mqttTopic,
+    String? deviceCode, // 🔑 THÊM VÀO copyWith
     bool? isActive,
     Map<String, dynamic>? configuration,
     DisplayConfig? displayConfig,
@@ -129,6 +132,7 @@ class UserSensor {
       sensorTypeId: sensorTypeId ?? this.sensorTypeId,
       displayName: displayName ?? this.displayName,
       mqttTopic: mqttTopic ?? this.mqttTopic,
+      deviceCode: deviceCode ?? this.deviceCode, // 🔑 THÊM VÀO copyWith
       isActive: isActive ?? this.isActive,
       configuration: configuration ?? this.configuration,
       displayConfig: displayConfig ?? this.displayConfig,
@@ -147,6 +151,7 @@ class UserSensor {
       'sensorTypeId': sensorTypeId,
       'displayName': displayName,
       'mqttTopic': mqttTopic,
+      'deviceCode': deviceCode, // 🔑 THÊM VÀO toJson
       'isActive': isActive,
       'configuration': configuration,
       'displayConfig': displayConfig?.toJson(),
@@ -165,6 +170,7 @@ class UserSensor {
       sensorTypeId: json['sensorTypeId'],
       displayName: json['displayName'],
       mqttTopic: json['mqttTopic'],
+      deviceCode: json['deviceCode'] ?? '', // 🔑 THÊM VÀO fromJson VỚI FALLBACK
       isActive: json['isActive'] ?? true,
       configuration: json['configuration'],
       displayConfig: json['displayConfig'] != null
@@ -221,6 +227,7 @@ class UserSensor {
       sensorTypeId: sensorType.id,
       displayName: displayName,
       mqttTopic: customMqttTopic ?? '${sensorType.defaultMqttTopic}/$sensorId',
+      deviceCode: 'SENSOR', // Default device code for sensors
       isActive: true,
       configuration: configuration,
       displayConfig: finalDisplayConfig,

@@ -197,6 +197,7 @@ class AuthProvider extends ChangeNotifier {
         return true;
       } else {
         print('❌ Google Sign-In cancelled by user');
+        _setError('Đăng nhập bị hủy. Vui lòng thử lại.');
         _setLoading(false);
         return false;
       }

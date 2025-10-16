@@ -346,20 +346,37 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _signInWithGoogle() async {
     final authProvider = context.read<AuthProvider>();
 
+    print('🔐 LoginScreen: Starting Google Sign-In...');
     final success = await authProvider.signInWithGoogle();
+    print('🔐 LoginScreen: Google Sign-In result: $success');
 
     if (success && mounted) {
+      print('✅ LoginScreen: Navigation to home screen');
       // Navigate to home screen
       Navigator.of(context).pushReplacementNamed('/home');
-    } else if (authProvider.errorMessage != null && mounted) {
-      // Show error message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage!),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    } else {
+      print('❌ LoginScreen: Google Sign-In failed or cancelled');
+      if (authProvider.errorMessage != null && mounted) {
+        print('❌ LoginScreen: Error message: ${authProvider.errorMessage}');
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage!),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else if (mounted) {
+        print('⚠️ LoginScreen: No error message, showing generic message');
+        // Show generic message for cancelled sign-in
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đăng nhập bị hủy hoặc thất bại. Vui lòng thử lại.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 }
