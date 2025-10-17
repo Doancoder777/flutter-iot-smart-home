@@ -19,11 +19,13 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   Map<String, dynamic> _condition = {};
-  Map<String, dynamic> _action = {};
+  Map<String, dynamic> _startAction = {};
+  Map<String, dynamic> _endAction = {};
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   bool _useTime = false;
   bool _isEditMode = false;
+  bool _hasEndActions = false; // Cho phép tùy chỉnh end actions
 
   @override
   void initState() {
@@ -43,19 +45,34 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
     if (rule.conditions.isNotEmpty) {
       final condition = rule.conditions.first;
       _condition = {
-        'sensor': condition.sensorType,
+        'sensor': condition.sensorId,
         'operator': condition.operator,
         'value': condition.value,
       };
     }
 
-    // Load action
-    if (rule.actions.isNotEmpty) {
-      final action = rule.actions.first;
-      _action = {
+    // Load start action
+    if (rule.startActions.isNotEmpty) {
+      final action = rule.startActions.first;
+      _startAction = {
         'device': action.deviceId,
         'action': action.action,
         'value': action.value,
+        'speed': action.speed,
+        'mode': action.mode,
+      };
+    }
+
+    // Load end action
+    _hasEndActions = rule.hasEndActions;
+    if (rule.hasEndActions && rule.endActions.isNotEmpty) {
+      final action = rule.endActions.first;
+      _endAction = {
+        'device': action.deviceId,
+        'action': action.action,
+        'value': action.value,
+        'speed': action.speed,
+        'mode': action.mode,
       };
     }
 
@@ -83,6 +100,42 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  Widget _buildActionSection({
+    required String title,
+    required String subtitle,
+    required Map<String, dynamic> action,
+    required Function(Map<String, dynamic>) onActionChanged,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            ActionBuilder(
+              initialAction: action,
+              onActionChanged: onActionChanged,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -181,14 +234,45 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Hành động
-            ActionBuilder(
+            // Start Actions
+            _buildActionSection(
+              title: 'Hành động bắt đầu',
+              subtitle: 'Thực thi khi điều kiện được thỏa mãn',
+              action: _startAction,
               onActionChanged: (action) {
                 setState(() {
-                  _action = action;
+                  _startAction = action;
                 });
               },
             ),
+            const SizedBox(height: 16),
+
+            // End Actions toggle
+            SwitchListTile(
+              title: const Text('Hành động kết thúc tùy chỉnh'),
+              subtitle: Text(
+                _hasEndActions
+                    ? 'Định nghĩa hành động khi điều kiện không còn thỏa mãn'
+                    : 'Sử dụng hành động mặc định: tắt tất cả thiết bị',
+              ),
+              value: _hasEndActions,
+              onChanged: (value) => setState(() => _hasEndActions = value),
+            ),
+
+            // End Actions (chỉ hiển thị khi bật)
+            if (_hasEndActions) ...[
+              const SizedBox(height: 16),
+              _buildActionSection(
+                title: 'Hành động kết thúc',
+                subtitle: 'Thực thi khi điều kiện không còn thỏa mãn',
+                action: _endAction,
+                onActionChanged: (action) {
+                  setState(() {
+                    _endAction = action;
+                  });
+                },
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Nút thêm
@@ -210,10 +294,10 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
 
   void _handleAddRule() {
     if (_formKey.currentState!.validate()) {
-      if (_action.isEmpty) {
+      if (_startAction.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Vui lòng thiết lập hành động'),
+            content: Text('Vui lòng thiết lập hành động bắt đầu'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -236,11 +320,11 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
         listen: false,
       );
 
-      // Kiểm tra dữ liệu action
-      if (_action.isEmpty || _action['device'] == null) {
+      // Kiểm tra dữ liệu start action
+      if (_startAction.isEmpty || _startAction['device'] == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Vui lòng chọn hành động'),
+            content: Text('❌ Vui lòng chọn hành động bắt đầu'),
             backgroundColor: Colors.red,
           ),
         );
@@ -256,11 +340,23 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
               'value': _condition['value'],
             };
 
-      final actionData = {
-        'deviceId': _action['device'],
-        'action': _action['action'] ?? 'on',
-        'value': _action['value'],
+      final startActionData = {
+        'deviceId': _startAction['device'],
+        'action': _startAction['action'] ?? 'on',
+        'value': _startAction['value'],
+        'speed': _startAction['speed'],
+        'mode': _startAction['mode'],
       };
+
+      final endActionData = _hasEndActions && _endAction.isNotEmpty
+          ? {
+              'deviceId': _endAction['device'],
+              'action': _endAction['action'] ?? 'off',
+              'value': _endAction['value'],
+              'speed': _endAction['speed'],
+              'mode': _endAction['mode'],
+            }
+          : null;
 
       // Tạo/cập nhật rule object
       final rule = automation_rule.AutomationRule(
@@ -272,7 +368,11 @@ class _AddRuleScreenState extends State<AddRuleScreen> {
         conditions: conditionData != null
             ? [automation_rule.Condition.fromJson(conditionData)]
             : [],
-        actions: [automation_rule.Action.fromJson(actionData)],
+        startActions: [automation_rule.Action.fromJson(startActionData)],
+        endActions: endActionData != null
+            ? [automation_rule.Action.fromJson(endActionData)]
+            : null,
+        hasEndActions: _hasEndActions,
         createdAt: _isEditMode ? widget.editRule!.createdAt : DateTime.now(),
         lastTriggered: _isEditMode ? widget.editRule!.lastTriggered : null,
         startTime: _useTime && _startTime != null

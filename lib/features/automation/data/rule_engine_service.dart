@@ -1,21 +1,44 @@
 import 'dart:async';
 import '../../../models/automation_rule.dart';
 import '../../../models/sensor_data.dart';
+import '../../../models/user_sensor.dart';
+import '../../../models/device_model.dart';
 import '../data/automation_database.dart';
 
 /// Rule engine that evaluates automation rules against sensor data
 class RuleEngineService {
   final AutomationDatabase _database;
   final Function(String ruleId, List<Action> actions) onRuleTriggered;
+  final Function(String ruleId, List<Action> actions)? onRuleEnded;
 
   // Debounce mechanism to prevent rapid re-triggering
   final Map<String, DateTime> _lastTriggerTimes = {};
   final Duration _debounceWindow = const Duration(seconds: 30);
 
+  // 🔄 Track rule states (triggered/ended)
+  final Map<String, bool> _ruleStates = {}; // true = triggered, false = ended
+
+  // 🔄 Dynamic data sources
+  List<UserSensor> _userSensors = [];
+  List<Device> _userDevices = [];
+
   RuleEngineService({
     required this.onRuleTriggered,
+    this.onRuleEnded,
     AutomationDatabase? database,
   }) : _database = database ?? AutomationDatabase();
+
+  /// 🔄 UPDATE DATA SOURCES - Call this when user sensors/devices change
+  void updateDataSources({
+    required List<UserSensor> userSensors,
+    required List<Device> userDevices,
+  }) {
+    _userSensors = userSensors;
+    _userDevices = userDevices;
+    print(
+      '🔄 RuleEngine: Updated data sources - ${_userSensors.length} sensors, ${_userDevices.length} devices',
+    );
+  }
 
   /// Evaluate all enabled rules against current sensor data
   Future<void> evaluateRules(SensorData sensorData) async {
@@ -28,9 +51,15 @@ class RuleEngineService {
           continue;
         }
 
-        // Evaluate all conditions (AND logic)
-        if (_evaluateConditions(rule.conditions, sensorData)) {
-          await _triggerRule(rule, sensorData);
+        final conditionsMet = _evaluateConditions(rule.conditions, sensorData);
+        final wasTriggered = _ruleStates[rule.id] ?? false;
+
+        if (conditionsMet && !wasTriggered) {
+          // Conditions just became true - trigger start actions
+          await _triggerRule(rule, sensorData, isStart: true);
+        } else if (!conditionsMet && wasTriggered) {
+          // Conditions just became false - trigger end actions
+          await _triggerRule(rule, sensorData, isStart: false);
         }
       }
     } catch (e) {
@@ -43,8 +72,12 @@ class RuleEngineService {
     if (conditions.isEmpty) return false;
 
     for (final condition in conditions) {
-      final currentValue = _getSensorValue(condition.sensorType, sensorData);
-      if (currentValue == null) return false;
+      // 🔄 SỬ DỤNG SENSOR ID THAY VÌ SENSOR TYPE
+      final currentValue = _getSensorValue(condition.sensorId, sensorData);
+      if (currentValue == null) {
+        print('⚠️ Cannot get value for sensor: ${condition.sensorId}');
+        return false;
+      }
 
       if (!condition.evaluate(currentValue)) {
         return false; // One condition failed
@@ -54,9 +87,23 @@ class RuleEngineService {
     return true; // All conditions passed
   }
 
-  /// Get sensor value by type
-  dynamic _getSensorValue(String sensorType, SensorData data) {
-    switch (sensorType.toLowerCase()) {
+  /// Get sensor value by sensor ID (from user's actual sensors)
+  dynamic _getSensorValue(String sensorId, SensorData data) {
+    // 🔄 TÌM SENSOR THEO ID trong user's sensors
+    final userSensor = _userSensors.firstWhere(
+      (sensor) => sensor.id == sensorId,
+      orElse: () => throw Exception('Sensor not found: $sensorId'),
+    );
+
+    // 🔄 LẤY GIÁ TRỊ TỪ SENSOR TYPE của user sensor
+    final sensorType = userSensor.sensorType;
+    if (sensorType == null) {
+      print('⚠️ Sensor type not found for sensor: $sensorId');
+      return null;
+    }
+
+    // 🔄 MAPPING theo sensor type ID thực tế
+    switch (sensorType.id.toLowerCase()) {
       case 'temperature':
         return data.temperature;
       case 'humidity':
@@ -76,20 +123,33 @@ class RuleEngineService {
       case 'motiondetected':
         return data.motionDetected ? 1 : 0;
       default:
-        print('⚠️ Unknown sensor type: $sensorType');
+        print('⚠️ Unknown sensor type: ${sensorType.id} for sensor: $sensorId');
         return null;
     }
   }
 
-  /// Trigger rule actions
-  Future<void> _triggerRule(AutomationRule rule, SensorData sensorData) async {
-    print('🎯 Triggering rule: ${rule.name}');
+  /// Trigger rule actions (start or end)
+  Future<void> _triggerRule(
+    AutomationRule rule,
+    SensorData sensorData, {
+    required bool isStart,
+  }) async {
+    final actionType = isStart ? 'START' : 'END';
+    print('🎯 $actionType Triggering rule: ${rule.name}');
 
-    // Update last trigger time
+    // Update last trigger time and rule state
     _lastTriggerTimes[rule.id] = DateTime.now();
+    _ruleStates[rule.id] = isStart;
+
+    // Get appropriate actions
+    final actions = isStart ? rule.startActions : rule.getEffectiveEndActions();
 
     // Execute actions via callback
-    onRuleTriggered(rule.id, rule.actions);
+    if (isStart) {
+      onRuleTriggered(rule.id, actions);
+    } else if (onRuleEnded != null) {
+      onRuleEnded!(rule.id, actions);
+    }
 
     // Log to database
     await _database.markRuleTriggered(rule.id);
@@ -107,7 +167,7 @@ class RuleEngineService {
         'dust': sensorData.dust,
         'motion': sensorData.motionDetected,
       },
-      actionsExecuted: rule.actions
+      actionsExecuted: actions
           .map(
             (a) =>
                 '${a.deviceId}: ${a.action}${a.value != null ? " (${a.value})" : ""}',
@@ -150,14 +210,14 @@ class RuleEngineService {
       return 'At least one condition is required';
     }
 
-    if (rule.actions.isEmpty) {
-      return 'At least one action is required';
+    if (rule.startActions.isEmpty) {
+      return 'At least one start action is required';
     }
 
     // Validate conditions
     for (final condition in rule.conditions) {
-      if (!_isValidSensorType(condition.sensorType)) {
-        return 'Invalid sensor type: ${condition.sensorType}';
+      if (!_isValidSensorType(condition.sensorId)) {
+        return 'Invalid sensor type: ${condition.sensorId}';
       }
 
       if (!_isValidOperator(condition.operator)) {
@@ -169,14 +229,27 @@ class RuleEngineService {
       }
     }
 
-    // Validate actions
-    for (final action in rule.actions) {
+    // Validate start actions
+    for (final action in rule.startActions) {
       if (action.deviceId.trim().isEmpty) {
-        return 'Action device ID cannot be empty';
+        return 'Start action device ID cannot be empty';
       }
 
       if (!_isValidAction(action.action)) {
-        return 'Invalid action: ${action.action}';
+        return 'Invalid start action: ${action.action}';
+      }
+    }
+
+    // Validate end actions (if custom)
+    if (rule.hasEndActions) {
+      for (final action in rule.endActions) {
+        if (action.deviceId.trim().isEmpty) {
+          return 'End action device ID cannot be empty';
+        }
+
+        if (!_isValidAction(action.action)) {
+          return 'Invalid end action: ${action.action}';
+        }
       }
     }
 
@@ -207,6 +280,8 @@ class RuleEngineService {
       'turn_on',
       'turn_off',
       'set_value',
+      'set_angle',
+      'set_speed',
       'toggle',
     ].contains(action.toLowerCase());
   }

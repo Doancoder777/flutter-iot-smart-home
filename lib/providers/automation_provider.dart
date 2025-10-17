@@ -210,10 +210,10 @@ class AutomationProvider extends ChangeNotifier {
 
     // Check if all conditions are met
     for (var condition in rule.conditions) {
-      final sensorValue = sensorData[condition.sensorType];
+      final sensorValue = sensorData[condition.sensorId];
       if (sensorValue == null) {
         // Debug: sensor value not available
-        // print('⚠️ Sensor "${condition.sensorType}" value not available for rule "${rule.name}"');
+        // print('⚠️ Sensor "${condition.sensorId}" value not available for rule "${rule.name}"');
         continue;
       }
 
@@ -241,15 +241,15 @@ class AutomationProvider extends ChangeNotifier {
     print('🔍 Evaluating ${activeRules.length} active rules');
     for (var rule in activeRules) {
       print(
-        '🔎 Checking rule "${rule.name}" (enabled: ${rule.enabled}, actions: ${rule.actions.length})',
+        '🔎 Checking rule "${rule.name}" (enabled: ${rule.enabled}, startActions: ${rule.startActions.length})',
       );
       if (checkConditions(rule, sensorData)) {
         print(
-          '⚡ Rule "${rule.name}" matched! Actions count: ${rule.actions.length}',
+          '⚡ Rule "${rule.name}" matched! Actions count: ${rule.startActions.length}',
         );
 
-        // Execute all actions
-        for (var action in rule.actions) {
+        // Execute all start actions
+        for (var action in rule.startActions) {
           print('🎬 Executing action: ${action.deviceId} - ${action.action}');
           executeAction(action.deviceId, action);
         }

@@ -374,7 +374,7 @@ class _RuleCard extends StatelessWidget {
                   _Chip(
                     icon: Icons.flash_on,
                     label:
-                        '${rule.actions.length} action${rule.actions.length != 1 ? 's' : ''}',
+                        '${rule.startActions.length} action${rule.startActions.length != 1 ? 's' : ''}',
                     color: Colors.orange,
                   ),
                 ],

@@ -78,7 +78,11 @@ class AutomationDatabase {
       'name': rule.name,
       'enabled': rule.enabled ? 1 : 0,
       'conditions': jsonEncode(rule.conditions.map((e) => e.toJson()).toList()),
-      'actions': jsonEncode(rule.actions.map((e) => e.toJson()).toList()),
+      'startActions': jsonEncode(
+        rule.startActions.map((e) => e.toJson()).toList(),
+      ),
+      'endActions': jsonEncode(rule.endActions.map((e) => e.toJson()).toList()),
+      'hasEndActions': rule.hasEndActions,
       'created_at': rule.createdAt.toIso8601String(),
       'last_triggered': rule.lastTriggered?.toIso8601String(),
       'trigger_count': 0,
@@ -137,7 +141,11 @@ class AutomationDatabase {
       'name': rule.name,
       'enabled': rule.enabled ? 1 : 0,
       'conditions': jsonEncode(rule.conditions.map((e) => e.toJson()).toList()),
-      'actions': jsonEncode(rule.actions.map((e) => e.toJson()).toList()),
+      'startActions': jsonEncode(
+        rule.startActions.map((e) => e.toJson()).toList(),
+      ),
+      'endActions': jsonEncode(rule.endActions.map((e) => e.toJson()).toList()),
+      'hasEndActions': rule.hasEndActions,
       'last_triggered': rule.lastTriggered?.toIso8601String(),
     };
 

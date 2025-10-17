@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/automation_provider.dart';
+import '../../providers/sensor_provider.dart';
+import '../../providers/device_provider.dart';
 import '../../config/app_colors.dart';
 import 'add_rule_screen.dart';
 
@@ -281,7 +283,7 @@ class AutomationScreen extends StatelessWidget {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            '${rule.conditions.length} điều kiện • ${rule.actions.length} hành động',
+                            '${rule.conditions.length} điều kiện • ${rule.startActions.length} hành động',
                             style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                         ],
@@ -460,7 +462,7 @@ class AutomationScreen extends StatelessWidget {
                       (condition) => Padding(
                         padding: EdgeInsets.only(left: 16, bottom: 8),
                         child: Text(
-                          '• ${_getConditionText(condition)}',
+                          '• ${_getConditionText(context, condition)}',
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
@@ -475,12 +477,12 @@ class AutomationScreen extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               SizedBox(height: 8),
-              ...rule.actions
+              ...rule.startActions
                   .map(
                     (action) => Padding(
                       padding: EdgeInsets.only(left: 16, bottom: 8),
                       child: Text(
-                        '• ${_getActionText(action)}',
+                        '• ${_getActionText(context, action)}',
                         style: TextStyle(fontSize: 14),
                       ),
                     ),
@@ -551,16 +553,14 @@ class AutomationScreen extends StatelessWidget {
     );
   }
 
-  String _getConditionText(dynamic condition) {
-    final sensorNames = {
-      'temperature': 'Nhiệt độ',
-      'humidity': 'Độ ẩm',
-      'gas': 'Khí gas',
-      'dust': 'Bụi',
-      'light': 'Ánh sáng',
-      'soil': 'Độ ẩm đất',
-      'rain': 'Mưa',
-    };
+  String _getConditionText(BuildContext context, dynamic condition) {
+    // Get sensor name from provider instead of hard-coded map
+    final sensorProvider = Provider.of<SensorProvider>(context, listen: false);
+    final sensor = sensorProvider.userSensors.firstWhere(
+      (s) => s.id == condition.sensorId,
+      orElse: () => throw StateError('Sensor not found'),
+    );
+    final sensorName = sensor.displayName;
 
     final operatorNames = {
       '>': 'lớn hơn',
@@ -570,24 +570,20 @@ class AutomationScreen extends StatelessWidget {
       '<=': 'nhỏ hơn hoặc bằng',
     };
 
-    final sensorName =
-        sensorNames[condition.sensorType] ?? condition.sensorType;
     final operatorName =
         operatorNames[condition.operator] ?? condition.operator;
 
     return '$sensorName $operatorName ${condition.value}';
   }
 
-  String _getActionText(dynamic action) {
-    final deviceNames = {
-      'pump': 'Máy bơm',
-      'light_living': 'Đèn phòng khách',
-      'light_yard': 'Đèn sân',
-      'mist_maker': 'Máy phun sương',
-      'roof': 'Mái che',
-      'gate': 'Cổng',
-      'buzzer': 'Còi',
-    };
+  String _getActionText(BuildContext context, dynamic action) {
+    // Get device name from provider instead of hard-coded map
+    final deviceProvider = Provider.of<DeviceProvider>(context, listen: false);
+    final device = deviceProvider.devices.firstWhere(
+      (d) => d.id == action.deviceId,
+      orElse: () => throw StateError('Device not found'),
+    );
+    final deviceName = device.name;
 
     final actionNames = {
       'on': 'Bật',
@@ -596,11 +592,22 @@ class AutomationScreen extends StatelessWidget {
       'turn_off': 'Tắt',
     };
 
-    final deviceName = deviceNames[action.deviceId] ?? action.deviceId;
-
+    // Handle different action types
     if (action.value != null) {
+      // Servo angle
       return '$deviceName - Xoay góc ${action.value}°';
+    } else if (action.speed != null) {
+      // Fan speed and mode
+      final modeText = action.mode == 'auto'
+          ? 'tự động'
+          : action.mode == 'manual'
+          ? 'thủ công'
+          : action.mode == 'sleep'
+          ? 'ngủ'
+          : action.mode;
+      return '$deviceName - Tốc độ ${action.speed}% (chế độ $modeText)';
     } else {
+      // Relay on/off
       final actionName = actionNames[action.action] ?? action.action;
       return '$deviceName - $actionName';
     }

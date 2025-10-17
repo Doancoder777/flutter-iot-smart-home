@@ -62,7 +62,7 @@ class AutomationService {
       if (isTriggered && !wasActive) {
         // Rule vừa active → Thực thi ON actions
         print('🟢 Rule "${rule.name}" activated');
-        for (var action in rule.actions) {
+        for (var action in rule.startActions) {
           _executeAction(action.deviceId, action);
         }
         _ruleActiveState[ruleId] = true;
@@ -70,7 +70,7 @@ class AutomationService {
         // Rule vừa inactive → Có thể tắt thiết bị (tùy logic)
         print('🔴 Rule "${rule.name}" deactivated');
         // Nếu muốn tự động tắt khi hết time:
-        for (var action in rule.actions) {
+        for (var action in rule.startActions) {
           _executeOffAction(action.deviceId, action);
         }
         _ruleActiveState[ruleId] = false;
@@ -86,10 +86,15 @@ class AutomationService {
         return;
       }
 
-      if (action.value != null) {
+      // Xác định loại action dựa trên action.action
+      if (action.action == 'set_angle' && action.value != null) {
         // Servo device (góc)
         deviceProvider.updateServoValue(deviceId, action.value as int);
         print('🎬 Automation: Set $deviceId to angle ${action.value}°');
+      } else if (action.action == 'set_speed' && action.speed != null) {
+        // Fan device (tốc độ)
+        deviceProvider.updateServoValue(deviceId, action.speed as int);
+        print('🎬 Automation: Set $deviceId to speed ${action.speed}');
       } else {
         // Relay device (on/off)
         final isOn = action.action == 'on' || action.action == 'turn_on';
@@ -110,10 +115,16 @@ class AutomationService {
       }
 
       // Tắt thiết bị khi rule kết thúc
-      if (action.value != null) {
-        // Servo device - trở về góc 0
-        deviceProvider.updateServoValue(deviceId, 0);
-        print('🎬 Automation: Reset $deviceId to 0°');
+      if (action.action == 'set_angle') {
+        // Servo device - trở về góc 0 hoặc góc được chỉ định trong end action
+        final endAngle = action.value ?? 0;
+        deviceProvider.updateServoValue(deviceId, endAngle);
+        print('🎬 Automation: Reset $deviceId to ${endAngle}° (rule ended)');
+      } else if (action.action == 'set_speed') {
+        // Fan device - tắt hoặc tốc độ được chỉ định trong end action
+        final endSpeed = action.speed ?? 0;
+        deviceProvider.updateServoValue(deviceId, endSpeed);
+        print('🎬 Automation: Set $deviceId to speed ${endSpeed} (rule ended)');
       } else {
         // Relay device - tắt
         deviceProvider.updateDeviceState(deviceId, false);

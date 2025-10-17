@@ -68,6 +68,13 @@ class SensorProvider extends ChangeNotifier {
       print(
         '📊 Loaded ${_userSensors.length} sensors for user: $_currentUserId',
       );
+
+      // Debug: List loaded sensors
+      for (final sensor in _userSensors) {
+        print(
+          '🐞 DEBUG: Loaded sensor: ${sensor.displayName} (${sensor.deviceCode})',
+        );
+      }
     } catch (e) {
       print('❌ Error loading user sensors: $e');
       _userSensors = [];
@@ -540,17 +547,43 @@ class SensorProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
+    // Add to current list
     _userSensors.add(userSensor);
-    // Save to storage - using sensor history method as fallback
-    final jsonList = _userSensors.map((sensor) => sensor.toJson()).toList();
-    await _storageService.saveSensorHistory(
-      'user_sensors',
-      jsonList,
-      userId: _currentUserId,
-    );
+
+    // Save using SensorConfigService
+    await _sensorConfigService.saveUserSensors(_currentUserId!, _userSensors);
     _safeNotify();
 
     print('✅ Added sensor: $displayName with device code: $deviceCode');
+
+    // Debug: Check storage after saving
+    await debugCheckStorage();
+  }
+
+  /// Debug method to check storage
+  Future<void> debugCheckStorage() async {
+    if (_currentUserId == null) {
+      print('🐞 DEBUG: No current user set');
+      return;
+    }
+
+    print('🐞 DEBUG: Checking storage for user: $_currentUserId');
+    print('🐞 DEBUG: Current sensors in memory: ${_userSensors.length}');
+
+    try {
+      final storedSensors = await _sensorConfigService.getUserSensors(
+        _currentUserId!,
+      );
+      print('🐞 DEBUG: Stored sensors: ${storedSensors.length}');
+
+      for (final sensor in storedSensors) {
+        print(
+          '🐞 DEBUG: Stored sensor: ${sensor.displayName} (${sensor.deviceCode})',
+        );
+      }
+    } catch (e) {
+      print('🐞 DEBUG: Error reading storage: $e');
+    }
   }
 
   void _safeNotify() {

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import '../../../models/automation_rule.dart';
 import '../../../models/sensor_data.dart';
+import '../../../models/user_sensor.dart';
+import '../../../models/device_model.dart';
 import '../data/automation_database.dart';
 import '../data/rule_engine_service.dart';
 
@@ -16,6 +18,10 @@ class AutomationProvider with ChangeNotifier {
   // Callback for executing device actions
   final Function(String ruleId, List<Action> actions)? onRuleTriggered;
 
+  // 🔄 Data sources for dynamic rule evaluation
+  List<UserSensor> _userSensors = [];
+  List<Device> _userDevices = [];
+
   AutomationProvider({this.onRuleTriggered}) {
     _ruleEngine = RuleEngineService(
       onRuleTriggered: (ruleId, actions) {
@@ -23,6 +29,23 @@ class AutomationProvider with ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  /// 🔄 UPDATE DATA SOURCES - Call this when user data changes
+  void updateDataSources({
+    required List<UserSensor> userSensors,
+    required List<Device> userDevices,
+  }) {
+    _userSensors = userSensors;
+    _userDevices = userDevices;
+
+    // Update rule engine with new data
+    _ruleEngine.updateDataSources(
+      userSensors: _userSensors,
+      userDevices: _userDevices,
+    );
+
+    print('🔄 AutomationProvider: Updated data sources');
   }
 
   // ════════════════════════════════════════════════════════
@@ -42,6 +65,12 @@ class AutomationProvider with ChangeNotifier {
 
   int get totalRules => _rules.length;
   int get enabledCount => enabledRules.length;
+
+  // 🔄 GETTERS FOR UI
+  List<UserSensor> get availableSensors =>
+      _userSensors.where((s) => s.isActive).toList();
+  List<Device> get availableDevices =>
+      _userDevices.where((d) => d.isOn).toList();
 
   // ════════════════════════════════════════════════════════
   // CRUD OPERATIONS

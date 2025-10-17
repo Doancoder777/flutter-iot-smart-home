@@ -129,7 +129,7 @@ class _RuleDetailScreenState extends State<RuleDetailScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${_formatSensorName(condition.sensorType)} ${condition.operator} ${condition.value}',
+                        '${_formatSensorName(condition.sensorId)} ${condition.operator} ${condition.value}',
                         style: const TextStyle(fontSize: 16),
                       ),
                     ),
@@ -152,7 +152,7 @@ class _RuleDetailScreenState extends State<RuleDetailScreen> {
           children: [
             Text('Actions', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            ...rule.actions.map((action) {
+            ...rule.startActions.map((action) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(

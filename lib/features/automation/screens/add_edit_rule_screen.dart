@@ -17,8 +17,10 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
   late TextEditingController _nameController;
 
   List<Condition> _conditions = [];
-  List<Action> _actions = [];
+  List<Action> _startActions = [];
+  List<Action> _endActions = [];
   bool _enabled = true;
+  bool _hasEndActions = false; // Cho phép tùy chỉnh end actions
 
   @override
   void initState() {
@@ -27,14 +29,38 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
 
     if (widget.rule != null) {
       _conditions = List.from(widget.rule!.conditions);
-      _actions = List.from(widget.rule!.actions);
+      _startActions = List.from(widget.rule!.startActions);
+      _endActions = List.from(widget.rule!.endActions);
+      _hasEndActions = widget.rule!.hasEndActions;
       _enabled = widget.rule!.enabled;
     } else {
-      // Default: add one empty condition and action
-      _conditions.add(
-        Condition(sensorType: 'temperature', operator: '>', value: 25.0),
+      // 🔄 Default: add one empty condition and action (will be populated by UI)
+      final automationProvider = Provider.of<AutomationProvider>(
+        context,
+        listen: false,
       );
-      _actions.add(Action(deviceId: 'relay1', action: 'turn_on'));
+      final availableSensors = automationProvider.availableSensors;
+      final availableDevices = automationProvider.availableDevices;
+
+      if (availableSensors.isNotEmpty) {
+        _conditions.add(
+          Condition(
+            sensorId: availableSensors.first.id,
+            operator: '>',
+            value: 25.0,
+          ),
+        );
+      }
+
+      if (availableDevices.isNotEmpty) {
+        _startActions.add(
+          Action(
+            deviceId: availableDevices.first.id,
+            deviceCode: availableDevices.first.deviceCode,
+            action: 'turn_on',
+          ),
+        );
+      }
     }
   }
 
@@ -121,13 +147,16 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
 
             const Divider(height: 32),
 
-            // Actions section
+            // Start Actions section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Actions', style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Start Actions',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 TextButton.icon(
-                  onPressed: _addAction,
+                  onPressed: _addStartAction,
                   icon: const Icon(Icons.add),
                   label: const Text('Add'),
                 ),
@@ -142,11 +171,68 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
             ),
             const SizedBox(height: 12),
 
-            ..._actions.asMap().entries.map((entry) {
+            ..._startActions.asMap().entries.map((entry) {
               final index = entry.key;
               final action = entry.value;
-              return _buildActionCard(context, action, index);
+              return _buildActionCard(
+                context,
+                action,
+                index,
+                isStartAction: true,
+              );
             }).toList(),
+
+            const SizedBox(height: 24),
+
+            // End Actions toggle
+            SwitchListTile(
+              title: const Text('Custom End Actions'),
+              subtitle: Text(
+                _hasEndActions
+                    ? 'Define custom actions when conditions are no longer met'
+                    : 'Use default action: turn off all devices',
+              ),
+              value: _hasEndActions,
+              onChanged: (value) => setState(() => _hasEndActions = value),
+            ),
+
+            // End Actions section (only show if enabled)
+            if (_hasEndActions) ...[
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'End Actions',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  TextButton.icon(
+                    onPressed: _addEndAction,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Actions will be executed when conditions are no longer met',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+
+              ..._endActions.asMap().entries.map((entry) {
+                final index = entry.key;
+                final action = entry.value;
+                return _buildActionCard(
+                  context,
+                  action,
+                  index,
+                  isStartAction: false,
+                );
+              }).toList(),
+            ],
 
             const SizedBox(height: 32),
 
@@ -192,39 +278,78 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Sensor type dropdown
-            DropdownButtonFormField<String>(
-              value: condition.sensorType,
-              decoration: const InputDecoration(
-                labelText: 'Sensor',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value: 'temperature',
-                  child: Text('Temperature'),
-                ),
-                DropdownMenuItem(value: 'humidity', child: Text('Humidity')),
-                DropdownMenuItem(value: 'light', child: Text('Light')),
-                DropdownMenuItem(value: 'rain', child: Text('Rain')),
-                DropdownMenuItem(
-                  value: 'soilMoisture',
-                  child: Text('Soil Moisture'),
-                ),
-                DropdownMenuItem(value: 'gas', child: Text('Gas')),
-                DropdownMenuItem(value: 'dust', child: Text('Dust')),
-                DropdownMenuItem(value: 'motion', child: Text('Motion')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _conditions[index] = Condition(
-                      sensorType: value,
-                      operator: condition.operator,
-                      value: condition.value,
-                    );
-                  });
+            // 🔄 Sensor dropdown - Dynamic from user's actual sensors
+            Consumer<AutomationProvider>(
+              builder: (context, automationProvider, child) {
+                final availableSensors = automationProvider.availableSensors;
+
+                if (availableSensors.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'No sensors available. Please add sensors first.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
                 }
+
+                return DropdownButtonFormField<String>(
+                  value: condition.sensorId,
+                  decoration: const InputDecoration(
+                    labelText: 'Sensor',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: availableSensors.map((sensor) {
+                    return DropdownMenuItem(
+                      value: sensor.id,
+                      child: Row(
+                        children: [
+                          Text(
+                            sensor.icon,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  sensor.displayName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  sensor.sensorType?.name ?? 'Unknown',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _conditions[index] = Condition(
+                          sensorId: value,
+                          operator: condition.operator,
+                          value: condition.value,
+                        );
+                      });
+                    }
+                  },
+                );
               },
             ),
 
@@ -252,7 +377,7 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
                       if (value != null) {
                         setState(() {
                           _conditions[index] = Condition(
-                            sensorType: condition.sensorType,
+                            sensorId: condition.sensorId,
                             operator: value,
                             value: condition.value,
                           );
@@ -278,7 +403,7 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
                       final numValue = double.tryParse(value);
                       if (numValue != null) {
                         _conditions[index] = Condition(
-                          sensorType: condition.sensorType,
+                          sensorId: condition.sensorId,
                           operator: condition.operator,
                           value: numValue,
                         );
@@ -294,7 +419,12 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
     );
   }
 
-  Widget _buildActionCard(BuildContext context, Action action, int index) {
+  Widget _buildActionCard(
+    BuildContext context,
+    Action action,
+    int index, {
+    required bool isStartAction,
+  }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -306,31 +436,106 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Action ${index + 1}',
+                  '${isStartAction ? "Start" : "End"} Action ${index + 1}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, size: 20),
-                  onPressed: () => _removeAction(index),
+                  onPressed: () => _removeAction(index, isStartAction),
                   color: Colors.red,
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Device ID input
-            TextFormField(
-              initialValue: action.deviceId,
-              decoration: const InputDecoration(
-                labelText: 'Device ID',
-                hintText: 'e.g., relay1, servo1',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                _actions[index] = Action(
-                  deviceId: value,
-                  action: action.action,
-                  value: action.value,
+            // 🔄 Device dropdown - Dynamic from user's actual devices
+            Consumer<AutomationProvider>(
+              builder: (context, automationProvider, child) {
+                final availableDevices = automationProvider.availableDevices;
+
+                if (availableDevices.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'No devices available. Please add devices first.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                return DropdownButtonFormField<String>(
+                  value: action.deviceId,
+                  decoration: const InputDecoration(
+                    labelText: 'Device',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: availableDevices.map((device) {
+                    return DropdownMenuItem(
+                      value: device.id,
+                      child: Row(
+                        children: [
+                          Text(
+                            device.icon ?? '🔧',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  device.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  '${device.type} • ${device.deviceCode}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      final selectedDevice = availableDevices.firstWhere(
+                        (d) => d.id == value,
+                      );
+                      setState(() {
+                        if (isStartAction) {
+                          _startActions[index] = Action(
+                            deviceId: value,
+                            deviceCode: selectedDevice.deviceCode,
+                            action: action.action,
+                            value: action.value,
+                            speed: action.speed,
+                            mode: action.mode,
+                          );
+                        } else {
+                          _endActions[index] = Action(
+                            deviceId: value,
+                            deviceCode: selectedDevice.deviceCode,
+                            action: action.action,
+                            value: action.value,
+                            speed: action.speed,
+                            mode: action.mode,
+                          );
+                        }
+                      });
+                    }
+                  },
                 );
               },
             ),
@@ -353,11 +558,25 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
-                    _actions[index] = Action(
-                      deviceId: action.deviceId,
-                      action: value,
-                      value: action.value,
-                    );
+                    if (isStartAction) {
+                      _startActions[index] = Action(
+                        deviceId: action.deviceId,
+                        deviceCode: action.deviceCode,
+                        action: value,
+                        value: action.value,
+                        speed: action.speed,
+                        mode: action.mode,
+                      );
+                    } else {
+                      _endActions[index] = Action(
+                        deviceId: action.deviceId,
+                        deviceCode: action.deviceCode,
+                        action: value,
+                        value: action.value,
+                        speed: action.speed,
+                        mode: action.mode,
+                      );
+                    }
                   });
                 }
               },
@@ -375,11 +594,25 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   final numValue = int.tryParse(value);
-                  _actions[index] = Action(
-                    deviceId: action.deviceId,
-                    action: action.action,
-                    value: numValue,
-                  );
+                  if (isStartAction) {
+                    _startActions[index] = Action(
+                      deviceId: action.deviceId,
+                      deviceCode: action.deviceCode,
+                      action: action.action,
+                      value: numValue,
+                      speed: action.speed,
+                      mode: action.mode,
+                    );
+                  } else {
+                    _endActions[index] = Action(
+                      deviceId: action.deviceId,
+                      deviceCode: action.deviceCode,
+                      action: action.action,
+                      value: numValue,
+                      speed: action.speed,
+                      mode: action.mode,
+                    );
+                  }
                 },
               ),
             ],
@@ -391,9 +624,26 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
 
   void _addCondition() {
     setState(() {
-      _conditions.add(
-        Condition(sensorType: 'temperature', operator: '>', value: 25.0),
+      final automationProvider = Provider.of<AutomationProvider>(
+        context,
+        listen: false,
       );
+      final availableSensors = automationProvider.availableSensors;
+
+      if (availableSensors.isNotEmpty) {
+        _conditions.add(
+          Condition(
+            sensorId: availableSensors.first.id,
+            operator: '>',
+            value: 25.0,
+          ),
+        );
+      } else {
+        // Fallback if no sensors available
+        _conditions.add(
+          Condition(sensorId: 'temp_sensor', operator: '>', value: 25.0),
+        );
+      }
     });
   }
 
@@ -409,22 +659,72 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
     }
   }
 
-  void _addAction() {
+  void _addStartAction() {
     setState(() {
-      _actions.add(Action(deviceId: 'relay1', action: 'turn_on'));
+      final automationProvider = Provider.of<AutomationProvider>(
+        context,
+        listen: false,
+      );
+      final availableDevices = automationProvider.availableDevices;
+
+      if (availableDevices.isNotEmpty) {
+        _startActions.add(
+          Action(
+            deviceId: availableDevices.first.id,
+            deviceCode: availableDevices.first.deviceCode,
+            action: 'turn_on',
+          ),
+        );
+      } else {
+        // Fallback if no devices available
+        _startActions.add(
+          Action(deviceId: 'relay1', deviceCode: 'RELAY1', action: 'turn_on'),
+        );
+      }
     });
   }
 
-  void _removeAction(int index) {
-    if (_actions.length > 1) {
-      setState(() {
-        _actions.removeAt(index);
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('At least one action is required')),
+  void _addEndAction() {
+    setState(() {
+      final automationProvider = Provider.of<AutomationProvider>(
+        context,
+        listen: false,
       );
-    }
+      final availableDevices = automationProvider.availableDevices;
+
+      if (availableDevices.isNotEmpty) {
+        _endActions.add(
+          Action(
+            deviceId: availableDevices.first.id,
+            deviceCode: availableDevices.first.deviceCode,
+            action: 'turn_off',
+          ),
+        );
+      } else {
+        // Fallback if no devices available
+        _endActions.add(
+          Action(deviceId: 'relay1', deviceCode: 'RELAY1', action: 'turn_off'),
+        );
+      }
+    });
+  }
+
+  void _removeAction(int index, bool isStartAction) {
+    setState(() {
+      if (isStartAction) {
+        if (_startActions.length > 1) {
+          _startActions.removeAt(index);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('At least one start action is required'),
+            ),
+          );
+        }
+      } else {
+        _endActions.removeAt(index);
+      }
+    });
   }
 
   void _saveRule() async {
@@ -437,10 +737,10 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
       return;
     }
 
-    if (_actions.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Add at least one action')));
+    if (_startActions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one start action')),
+      );
       return;
     }
 
@@ -449,7 +749,9 @@ class _AddEditRuleScreenState extends State<AddEditRuleScreen> {
       name: _nameController.text.trim(),
       enabled: _enabled,
       conditions: _conditions,
-      actions: _actions,
+      startActions: _startActions,
+      endActions: _hasEndActions ? _endActions : null,
+      hasEndActions: _hasEndActions,
       createdAt: widget.rule?.createdAt ?? DateTime.now(),
       lastTriggered: widget.rule?.lastTriggered,
     );
