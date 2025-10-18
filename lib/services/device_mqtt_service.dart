@@ -315,6 +315,176 @@ class DeviceMqttService {
     return false;
   }
 
+  /// Subscribe đến custom topic
+  Future<bool> subscribeToCustomTopic(Device device, String topic) async {
+    print('🔍 DEBUG: subscribeToCustomTopic called for device ${device.name}');
+    print('🔍 DEBUG: Topic: $topic');
+
+    if (!device.hasCustomMqttConfig) {
+      print('❌ Device does not have custom MQTT config');
+      return false;
+    }
+
+    final config = device.mqttConfig!;
+    MqttServerClient? client = _deviceClients[device.id];
+
+    // Nếu chưa connect, connect trước
+    if (client == null ||
+        client.connectionStatus?.state != MqttConnectionState.connected) {
+      print(
+        '🔄 Device MQTT: Connecting for subscription to ${config.broker}:${config.port}...',
+      );
+
+      client = MqttServerClient.withPort(
+        config.broker,
+        device.mqttClientId,
+        config.port,
+      );
+
+      client.logging(on: false);
+      client.keepAlivePeriod = 30;
+      client.connectTimeoutPeriod = 10 * 1000;
+      client.autoReconnect = true;
+      client.resubscribeOnAutoReconnect = true;
+
+      client.secure = config.useSsl;
+      if (config.useSsl) {
+        client.securityContext = SecurityContext.defaultContext;
+      }
+      client.setProtocolV311();
+
+      final connMessage = MqttConnectMessage()
+          .authenticateAs(config.username, config.password)
+          .withWillTopic('${device.finalMqttTopic}/status')
+          .withWillMessage('offline')
+          .withWillQos(MqttQos.atLeastOnce)
+          .withWillRetain()
+          .startClean()
+          .keepAliveFor(30);
+
+      client.connectionMessage = connMessage;
+
+      try {
+        await client.connect();
+        if (client.connectionStatus?.state == MqttConnectionState.connected) {
+          print('✅ Device MQTT: Connected for subscription');
+          _deviceClients[device.id] = client;
+
+          // Thiết lập message handler
+          _setupDeviceMessageListener(device.id, client);
+        } else {
+          print('❌ Device MQTT: Connection failed');
+          return false;
+        }
+      } catch (e) {
+        print('❌ Device MQTT Connection Error: $e');
+        return false;
+      }
+    }
+
+    // Subscribe sau khi đảm bảo đã connected
+    try {
+      client.subscribe(topic, MqttQos.atLeastOnce);
+      print('✅ Subscribed to custom topic: $topic');
+
+      // Đợi một chút để đảm bảo subscription đã được xử lý
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      return true;
+    } catch (e) {
+      print('❌ Failed to subscribe to custom topic: $e');
+      return false;
+    }
+  }
+
+  /// Gửi message đến custom topic (ví dụ: /ping, /status)
+  Future<bool> publishToCustomTopic(
+    Device device,
+    String topic,
+    String message, {
+    bool retain = false,
+  }) async {
+    print('🔍 DEBUG: publishToCustomTopic called for device ${device.name}');
+    print('🔍 DEBUG: Custom topic: $topic');
+    print('🔍 DEBUG: Message: $message');
+
+    if (!device.hasCustomMqttConfig) {
+      print(
+        '❌ DEBUG: Device does not have custom MQTT config, returning false',
+      );
+      return false;
+    }
+
+    final config = device.mqttConfig!;
+    MqttServerClient? client = _deviceClients[device.id];
+
+    if (client == null ||
+        client.connectionStatus?.state != MqttConnectionState.connected) {
+      // Connect first
+      print(
+        '🔄 Device MQTT: Connecting to ${config.broker}:${config.port} for custom topic...',
+      );
+      client = MqttServerClient.withPort(
+        config.broker,
+        device.mqttClientId,
+        config.port,
+      );
+
+      client.logging(on: false);
+      client.keepAlivePeriod = 30;
+      client.connectTimeoutPeriod = 10 * 1000;
+      client.secure = config.useSsl;
+      if (config.useSsl) {
+        client.securityContext = SecurityContext.defaultContext;
+      }
+      client.setProtocolV311();
+
+      final connMessage = MqttConnectMessage()
+          .authenticateAs(config.username ?? '', config.password ?? '')
+          .startClean()
+          .keepAliveFor(30);
+      client.connectionMessage = connMessage;
+
+      try {
+        await client.connect();
+        if (client.connectionStatus?.state == MqttConnectionState.connected) {
+          _deviceClients[device.id] = client;
+          print('✅ Device MQTT: Connected for custom topic publish');
+        } else {
+          print('❌ Device MQTT: Connection failed for custom topic');
+          client.disconnect();
+          return false;
+        }
+      } catch (e) {
+        print('❌ Device MQTT Connection Error: $e');
+        try {
+          client.disconnect();
+        } catch (_) {}
+        return false;
+      }
+    }
+
+    if (client.connectionStatus?.state == MqttConnectionState.connected) {
+      try {
+        final builder = MqttClientPayloadBuilder();
+        builder.addString(message);
+
+        client.publishMessage(
+          topic,
+          MqttQos.atLeastOnce,
+          builder.payload!,
+          retain: retain,
+        );
+        print('📤 Device MQTT: Published to $topic: $message');
+        return true;
+      } catch (e) {
+        print('❌ Device MQTT Publish Error: $e');
+        return false;
+      }
+    }
+    return false;
+  }
+
   /// Cleanup khi service bị dispose
   void dispose() {
     disconnectAllDevices();

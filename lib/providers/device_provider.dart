@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:math';
+import 'dart:async';
 import '../models/device_model.dart';
 import '../services/image_picker_service.dart';
 import '../services/device_storage_service.dart';
@@ -13,6 +14,14 @@ class DeviceProvider extends ChangeNotifier {
   final DeviceStorageService _storageService = DeviceStorageService();
   final DeviceMqttService _deviceMqttService = DeviceMqttService();
   String? _currentUserId;
+
+  // Thêm biến để theo dõi trạng thái kiểm tra kết nối
+  bool _isCheckingConnection = false;
+  String? _connectionCheckDeviceId;
+  Timer? _connectionCheckTimer;
+
+  bool get isCheckingConnection => _isCheckingConnection;
+  String? get connectionCheckDeviceId => _connectionCheckDeviceId;
 
   List<Device> get devices => _devices;
   List<Device> get relays =>
@@ -99,6 +108,88 @@ class DeviceProvider extends ChangeNotifier {
     } catch (e) {
       print('❌ Error adding device: $e');
       rethrow;
+    }
+  }
+
+  /// Kiểm tra kết nối MQTT của thiết bị
+  Future<bool> checkMqttConnection(Device device) async {
+    // Ngăn gọi nhiều lần cùng lúc
+    if (_isCheckingConnection) {
+      print('⚠️ Connection check already in progress');
+      return false;
+    }
+
+    _isCheckingConnection = true;
+    _connectionCheckDeviceId = device.id;
+    notifyListeners();
+
+    // Sử dụng Completer để chỉ trả về kết quả 1 lần
+    final completer = Completer<bool>();
+
+    try {
+      // Topic ping
+      final pingTopic = 'smart_home/devices/${device.deviceCode}/ping';
+      final pingPayload = 'ping';
+
+      print('🔍 Starting connection check for device: ${device.name}');
+      print('🔍 Ping topic: $pingTopic');
+
+      // Subscribe đến ping topic trước
+      await _deviceMqttService.subscribeToCustomTopic(device, pingTopic);
+
+      // Timeout sau 5 giây
+      _connectionCheckTimer = Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          print('⏱️ Connection check timeout for device: ${device.name}');
+          _isCheckingConnection = false;
+          _connectionCheckDeviceId = null;
+          _deviceMqttService.removeDeviceCallback(device.id);
+          notifyListeners();
+          completer.complete(false);
+        }
+      });
+
+      // Lắng nghe MQTT messages - CHỈ GỌI 1 LẦN
+      _deviceMqttService.setDeviceCallback(
+        device.id,
+        onMessage: (message) {
+          if (message == '1' && !completer.isCompleted) {
+            print(
+              '✅ MQTT connection check successful for device: ${device.name}',
+            );
+            _isCheckingConnection = false;
+            _connectionCheckDeviceId = null;
+            _connectionCheckTimer?.cancel();
+            _deviceMqttService.removeDeviceCallback(device.id);
+            notifyListeners();
+            completer.complete(true);
+          }
+        },
+      );
+
+      // Gửi lệnh ping CHỈ 1 LẦN
+      print('📤 Sending ping to: $pingTopic');
+      await _deviceMqttService.publishToCustomTopic(
+        device,
+        pingTopic,
+        pingPayload,
+      );
+      print('✅ Ping sent successfully');
+
+      // Đợi kết quả (timeout hoặc nhận response)
+      return await completer.future;
+    } catch (e) {
+      print('❌ MQTT connection check failed: $e');
+      _isCheckingConnection = false;
+      _connectionCheckDeviceId = null;
+      _connectionCheckTimer?.cancel();
+      _deviceMqttService.removeDeviceCallback(device.id);
+      notifyListeners();
+
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
+      return false;
     }
   }
 

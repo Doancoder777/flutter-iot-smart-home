@@ -13,6 +13,7 @@ class DeviceCard extends StatelessWidget {
   final VoidCallback? onEdit; // ✏️ THÊM CALLBACK EDIT
   final VoidCallback? onDelete; // 🗑️ THÊM CALLBACK DELETE
   final VoidCallback? onMoveRoom; // 🏠 THÊM CALLBACK CHUYỂN PHÒNG
+  final VoidCallback? onCheckConnection; // 🔗 THÊM CALLBACK KIỂM TRA KẾT NỐI
 
   const DeviceCard({
     Key? key,
@@ -25,6 +26,7 @@ class DeviceCard extends StatelessWidget {
     this.onEdit, // ✏️ THÊM PARAMETER EDIT
     this.onDelete, // 🗑️ THÊM PARAMETER DELETE
     this.onMoveRoom, // 🏠 THÊM PARAMETER CHUYỂN PHÒNG
+    this.onCheckConnection, // 🔗 THÊM PARAMETER KIỂM TRA KẾT NỐI
   }) : super(key: key);
 
   @override
@@ -107,7 +109,8 @@ class DeviceCard extends StatelessWidget {
                       // Menu 3 chấm
                       if (onEdit != null ||
                           onDelete != null ||
-                          onMoveRoom != null)
+                          onMoveRoom != null ||
+                          onCheckConnection != null)
                         PopupMenuButton<String>(
                           onSelected: (value) {
                             if (value == 'edit' && onEdit != null) {
@@ -117,6 +120,9 @@ class DeviceCard extends StatelessWidget {
                             } else if (value == 'move_room' &&
                                 onMoveRoom != null) {
                               onMoveRoom!();
+                            } else if (value == 'check_connection' &&
+                                onCheckConnection != null) {
+                              onCheckConnection!();
                             }
                           },
                           itemBuilder: (context) => [
@@ -139,6 +145,17 @@ class DeviceCard extends StatelessWidget {
                                     Icon(Icons.swap_horiz, size: 20),
                                     SizedBox(width: 8),
                                     Text('Chuyển phòng'),
+                                  ],
+                                ),
+                              ),
+                            if (onCheckConnection != null)
+                              PopupMenuItem<String>(
+                                value: 'check_connection',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.wifi, size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Kiểm tra kết nối'),
                                   ],
                                 ),
                               ),

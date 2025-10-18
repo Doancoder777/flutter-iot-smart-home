@@ -78,6 +78,8 @@ class DevicesScreen extends StatelessWidget {
                         onEdit: () => _editDevice(context, device),
                         onDelete: () => _deleteDevice(context, device),
                         onMoveRoom: () => _moveDeviceToRoom(context, device),
+                        onCheckConnection: () =>
+                            _checkMqttConnection(context, device),
                       ),
                     );
                   }).toList(),
@@ -104,6 +106,8 @@ class DevicesScreen extends StatelessWidget {
                         onEdit: () => _editDevice(context, device),
                         onDelete: () => _deleteDevice(context, device),
                         onMoveRoom: () => _moveDeviceToRoom(context, device),
+                        onCheckConnection: () =>
+                            _checkMqttConnection(context, device),
                       ),
                     );
                   }).toList(),
@@ -133,6 +137,8 @@ class DevicesScreen extends StatelessWidget {
                         onEdit: () => _editDevice(context, device),
                         onDelete: () => _deleteDevice(context, device),
                         onMoveRoom: () => _moveDeviceToRoom(context, device),
+                        onCheckConnection: () =>
+                            _checkMqttConnection(context, device),
                       ),
                     );
                   }).toList(),
@@ -584,5 +590,109 @@ class DevicesScreen extends StatelessWidget {
         );
       }
     });
+  }
+
+  // Kiểm tra kết nối MQTT
+  void _checkMqttConnection(BuildContext context, Device device) async {
+    final deviceProvider = Provider.of<DeviceProvider>(context, listen: false);
+
+    // Hiển thị dialog đang kiểm tra
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Kiểm tra kết nối'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Đang kiểm tra kết nối với "${device.name}"...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final isConnected = await deviceProvider.checkMqttConnection(device);
+
+      if (context.mounted) {
+        Navigator.pop(context); // Đóng dialog loading
+
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(
+                  isConnected ? Icons.check_circle : Icons.error,
+                  color: isConnected ? Colors.green : Colors.red,
+                  size: 32,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    isConnected ? 'Kết nối thành công' : 'Kết nối thất bại',
+                    style: TextStyle(
+                      color: isConnected ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isConnected
+                      ? 'Thiết bị "${device.name}" đang kết nối bình thường!'
+                      : 'Không thể kết nối với thiết bị "${device.name}".',
+                  style: TextStyle(fontSize: 16),
+                ),
+                if (!isConnected) ...[
+                  SizedBox(height: 12),
+                  Text(
+                    'Vui lòng kiểm tra:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '• Cấu hình MQTT của thiết bị\n'
+                    '• ESP32 đã được cấp nguồn và kết nối WiFi\n'
+                    '• Mã thiết bị (device code) khớp với ESP32',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  foregroundColor: isConnected ? Colors.green : Colors.red,
+                ),
+                child: Text(
+                  'OK',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Đóng dialog loading
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi kiểm tra kết nối: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
