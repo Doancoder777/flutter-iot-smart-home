@@ -20,8 +20,22 @@ class DeviceProvider extends ChangeNotifier {
   String? _connectionCheckDeviceId;
   Timer? _connectionCheckTimer;
 
+  // 📡 TRẠNG THÁI KẾT NỐI CỦA TỪNG THIẾT BỊ
+  final Map<String, bool> _deviceConnectionStatus =
+      {}; // deviceId -> isConnected
+  Timer? _autoPingTimer; // Timer để tự động ping 5 phút 1 lần
+  bool _isAutoPinging = false; // Đang auto-ping hay không
+
   bool get isCheckingConnection => _isCheckingConnection;
   String? get connectionCheckDeviceId => _connectionCheckDeviceId;
+
+  // Lấy trạng thái kết nối của thiết bị
+  bool isDeviceConnected(String deviceId) =>
+      _deviceConnectionStatus[deviceId] ?? false;
+
+  // Đếm số thiết bị đã kết nối
+  int get connectedDevicesCount =>
+      _deviceConnectionStatus.values.where((v) => v).length;
 
   List<Device> get devices => _devices;
   List<Device> get relays =>
@@ -77,6 +91,14 @@ class DeviceProvider extends ChangeNotifier {
 
       // 🐞 DEBUG: Print MQTT topics after loading
       debugPrintMqttTopics();
+
+      // 📡 BẮT ĐẦU AUTO-PING SAU KHI LOAD DEVICES
+      if (_devices.isNotEmpty) {
+        debugPrint(
+          '📡 Starting auto-ping after loading ${_devices.length} devices...',
+        );
+        startAutoPing();
+      }
     } catch (e) {
       debugPrint('❌ Error loading user devices: $e');
     }
@@ -177,13 +199,22 @@ class DeviceProvider extends ChangeNotifier {
       print('✅ Ping sent successfully');
 
       // Đợi kết quả (timeout hoặc nhận response)
-      return await completer.future;
+      final result = await completer.future;
+
+      // 📡 LƯU TRẠNG THÁI KẾT NỐI
+      _deviceConnectionStatus[device.id] = result;
+      notifyListeners();
+
+      return result;
     } catch (e) {
       print('❌ MQTT connection check failed: $e');
       _isCheckingConnection = false;
       _connectionCheckDeviceId = null;
       _connectionCheckTimer?.cancel();
       _deviceMqttService.removeDeviceCallback(device.id);
+
+      // 📡 LƯU TRẠNG THÁI KẾT NỐI THẤT BẠI
+      _deviceConnectionStatus[device.id] = false;
       notifyListeners();
 
       if (!completer.isCompleted) {
@@ -959,5 +990,135 @@ class DeviceProvider extends ChangeNotifier {
         (_) => chars.codeUnitAt(random.nextInt(chars.length)),
       ),
     );
+  }
+
+  // ========================================
+  // 📡 AUTO-PING DEVICES
+  // ========================================
+
+  /// Ping tất cả thiết bị (không block UI, chạy background)
+  Future<void> pingAllDevices({bool silent = true}) async {
+    if (_isAutoPinging) {
+      print('⚠️ Auto-ping already in progress, skipping...');
+      return;
+    }
+
+    if (_devices.isEmpty) {
+      print('ℹ️ No devices to ping');
+      return;
+    }
+
+    _isAutoPinging = true;
+    if (!silent) notifyListeners(); // Chỉ notify nếu không silent
+
+    print('📡 Starting auto-ping for ${_devices.length} devices...');
+
+    // Ping tất cả thiết bị song song (không đợi lẫn nhau)
+    final pingFutures = _devices.map((device) async {
+      try {
+        // Tạo một version "lightweight" của checkMqttConnection
+        // để không conflict với _isCheckingConnection flag
+        await _pingDeviceSilent(device);
+      } catch (e) {
+        print('❌ Error ping device ${device.name}: $e');
+        _deviceConnectionStatus[device.id] = false;
+      }
+    }).toList();
+
+    // Đợi tất cả ping hoàn thành (hoặc timeout)
+    await Future.wait(pingFutures);
+
+    _isAutoPinging = false;
+    notifyListeners(); // Luôn notify sau khi ping xong để update UI
+
+    print(
+      '✅ Auto-ping completed. Connected: $connectedDevicesCount/${_devices.length}',
+    );
+  }
+
+  /// Ping một thiết bị (silent mode - không set _isCheckingConnection)
+  Future<bool> _pingDeviceSilent(Device device) async {
+    final completer = Completer<bool>();
+    Timer? timeoutTimer;
+
+    try {
+      final pingTopic = 'smart_home/devices/${device.deviceCode}/ping';
+      final pingPayload = 'ping';
+
+      // Subscribe
+      await _deviceMqttService.subscribeToCustomTopic(device, pingTopic);
+
+      // Timeout ngắn hơn (3 giây thay vì 5)
+      timeoutTimer = Timer(const Duration(seconds: 3), () {
+        if (!completer.isCompleted) {
+          _deviceMqttService.removeDeviceCallback(device.id);
+          _deviceConnectionStatus[device.id] = false;
+          completer.complete(false);
+        }
+      });
+
+      // Callback nhận message
+      _deviceMqttService.setDeviceCallback(
+        device.id,
+        onMessage: (message) {
+          if (message == '1' && !completer.isCompleted) {
+            timeoutTimer?.cancel();
+            _deviceMqttService.removeDeviceCallback(device.id);
+            _deviceConnectionStatus[device.id] = true;
+            completer.complete(true);
+          }
+        },
+      );
+
+      // Gửi ping
+      await _deviceMqttService.publishToCustomTopic(
+        device,
+        pingTopic,
+        pingPayload,
+      );
+
+      return await completer.future;
+    } catch (e) {
+      print('❌ Ping device ${device.name} failed: $e');
+      timeoutTimer?.cancel();
+      _deviceMqttService.removeDeviceCallback(device.id);
+      _deviceConnectionStatus[device.id] = false;
+
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
+      return false;
+    }
+  }
+
+  /// Bắt đầu auto-ping timer (mỗi 5 phút)
+  void startAutoPing() {
+    // Hủy timer cũ nếu có
+    stopAutoPing();
+
+    print('🔄 Starting auto-ping timer (every 5 minutes)...');
+
+    // Ping ngay lần đầu
+    pingAllDevices(silent: true);
+
+    // Ping mỗi 5 phút
+    _autoPingTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      print('⏰ Auto-ping timer triggered');
+      pingAllDevices(silent: true);
+    });
+  }
+
+  /// Dừng auto-ping timer
+  void stopAutoPing() {
+    _autoPingTimer?.cancel();
+    _autoPingTimer = null;
+    print('⏹️ Auto-ping timer stopped');
+  }
+
+  @override
+  void dispose() {
+    stopAutoPing();
+    _connectionCheckTimer?.cancel();
+    super.dispose();
   }
 }

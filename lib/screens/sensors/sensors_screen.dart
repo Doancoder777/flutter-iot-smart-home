@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sensor_provider.dart';
+import '../../providers/device_provider.dart';
 import '../../models/user_sensor.dart';
+import '../../models/device_model.dart';
 import '../../config/app_colors.dart';
 import '../../widgets/sensor_avatar.dart';
 import 'add_sensor_screen.dart';
@@ -294,6 +296,16 @@ class SensorsScreen extends StatelessWidget {
                   _handleSensorAction(context, sensor, value, sensorProvider),
               itemBuilder: (context) => [
                 const PopupMenuItem(
+                  value: 'check_connection',
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_find, size: 16, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Kiểm tra kết nối'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'edit',
                   child: Row(
                     children: [
@@ -458,6 +470,9 @@ class SensorsScreen extends StatelessWidget {
     SensorProvider sensorProvider,
   ) {
     switch (action) {
+      case 'check_connection':
+        _checkSensorMqttConnection(context, sensor);
+        break;
       case 'edit':
         // TODO: Implement edit sensor
         break;
@@ -492,6 +507,123 @@ class SensorsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _checkSensorMqttConnection(
+    BuildContext context,
+    UserSensor sensor,
+  ) async {
+    // Hiển thị dialog loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Đang kiểm tra kết nối MQTT...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Cần tạo Device object tạm thời từ sensor để sử dụng checkMqttConnection
+      // Vì DeviceProvider.checkMqttConnection nhận Device parameter
+      final tempDevice = Device(
+        id: sensor.id,
+        name: sensor.displayName,
+        room: 'sensor_check',
+        type: DeviceType.relay,
+        icon: sensor.icon,
+        state: false,
+        keyName: sensor.id,
+        deviceCode: sensor.deviceCode,
+        mqttConfig: sensor.mqttConfig,
+      );
+
+      final deviceProvider = Provider.of<DeviceProvider>(
+        context,
+        listen: false,
+      );
+
+      bool isConnected = await deviceProvider.checkMqttConnection(tempDevice);
+
+      if (context.mounted) {
+        Navigator.pop(context); // Đóng loading dialog
+
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(
+                  isConnected ? Icons.check_circle : Icons.error,
+                  color: isConnected ? Colors.green : Colors.red,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    isConnected ? 'Kết nối thành công' : 'Kết nối thất bại',
+                    style: TextStyle(
+                      color: isConnected ? Colors.green[800] : Colors.red[800],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isConnected
+                      ? 'Cảm biến "${sensor.displayName}" đang kết nối bình thường!'
+                      : 'Không thể kết nối với cảm biến "${sensor.displayName}".',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                if (!isConnected) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Vui lòng kiểm tra:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('• ESP32 đã bật và kết nối WiFi'),
+                  const Text('• Cấu hình MQTT broker đúng'),
+                  const Text('• Mã cảm biến (deviceCode) khớp với ESP32'),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  foregroundColor: isConnected
+                      ? Colors.green
+                      : Colors.grey[600],
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Đóng loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi kiểm tra kết nối: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _deleteSensor(BuildContext context, UserSensor sensor) async {

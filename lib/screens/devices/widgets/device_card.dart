@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../models/device_model.dart';
 import '../../../config/app_colors.dart';
 import '../../../widgets/device_avatar.dart';
+import '../../../providers/device_provider.dart';
 
 class DeviceCard extends StatelessWidget {
   final Device device;
@@ -45,12 +47,41 @@ class DeviceCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  // DeviceAvatar thay cho icon cũ
-                  DeviceAvatar(
-                    icon: device.icon ?? _getDefaultIcon(),
-                    avatarPath: device.avatarPath,
-                    size: 48,
-                    isActive: device.state,
+                  // DeviceAvatar thay cho icon cũ với online indicator
+                  Consumer<DeviceProvider>(
+                    builder: (context, deviceProvider, child) {
+                      final isOnline = deviceProvider.isDeviceConnected(
+                        device.id,
+                      );
+                      return Stack(
+                        children: [
+                          DeviceAvatar(
+                            icon: device.icon ?? _getDefaultIcon(),
+                            avatarPath: device.avatarPath,
+                            size: 48,
+                            isActive: device.state,
+                          ),
+                          // Chấm xanh online indicator (như Messenger)
+                          if (isOnline)
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                   SizedBox(width: 16),
 

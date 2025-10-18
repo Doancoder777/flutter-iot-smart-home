@@ -5,9 +5,9 @@ import '../../providers/sensor_provider.dart';
 import '../../providers/device_provider.dart';
 import '../../config/app_colors.dart';
 import '../../models/device_model.dart';
+import '../../widgets/connection_status_badge.dart';
 import 'widgets/animated_sensor_card.dart';
 import 'widgets/device_quick_control.dart';
-import 'widgets/status_indicator.dart';
 import 'widgets/alert_banner.dart';
 import 'widgets/weather_widget.dart';
 import 'widgets/room_card.dart';
@@ -54,16 +54,9 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('Smart Home'),
         actions: [
-          // Connection Status
-          Consumer<MqttProvider>(
-            builder: (context, mqtt, _) {
-              return StatusIndicator(
-                isOnline: mqtt.isConnected,
-                label: mqtt.connectionStatus,
-              );
-            },
-          ),
-          SizedBox(width: 16),
+          // 📡 CONNECTION STATUS BADGE (Hiển thị số thiết bị kết nối)
+          const ConnectionStatusBadge(),
+          const SizedBox(width: 16),
         ],
       ),
 
