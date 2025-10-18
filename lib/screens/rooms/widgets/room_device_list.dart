@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/device_provider.dart';
 import '../../../models/device_model.dart';
+import '../../../widgets/device_avatar.dart';
 // import '../../devices/device_detail_screen.dart'; // Unused - removed
 
 /// Widget danh sách thiết bị trong phòng - Sử dụng data thực từ DeviceProvider
@@ -178,9 +179,11 @@ class RoomDeviceList extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: device.state ? Colors.green : Colors.grey,
-          child: Text(device.icon ?? '⚡', style: const TextStyle(fontSize: 18)),
+        leading: DeviceAvatar(
+          icon: device.icon ?? '⚡',
+          avatarPath: device.avatarPath,
+          size: 40,
+          isActive: device.state,
         ),
         title: Text(
           device.name,
@@ -203,11 +206,64 @@ class RoomDeviceList extends StatelessWidget {
             ),
           ],
         ),
-        trailing: Switch(
-          value: device.state,
-          onChanged: (value) {
-            provider.updateDeviceState(device.id, value);
-          },
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(
+              value: device.state,
+              onChanged: (value) {
+                provider.updateDeviceState(device.id, value);
+              },
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') {
+                  Navigator.pushNamed(
+                    context,
+                    '/edit_device',
+                    arguments: device,
+                  );
+                } else if (value == 'delete') {
+                  _showDeleteConfirmation(context, device, provider);
+                } else if (value == 'move_room') {
+                  _showMoveRoomDialog(context, device, provider);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 20),
+                      SizedBox(width: 8),
+                      Text('Sửa thiết bị'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'move_room',
+                  child: Row(
+                    children: [
+                      Icon(Icons.swap_horiz, size: 20),
+                      SizedBox(width: 8),
+                      Text('Chuyển phòng'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 20, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Xóa thiết bị', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+              icon: Icon(Icons.more_vert),
+            ),
+          ],
         ),
         onTap: () {
           Navigator.pushNamed(context, '/device_detail', arguments: device);
@@ -238,12 +294,11 @@ class RoomDeviceList extends StatelessWidget {
               // Header
               Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: value > 0 ? Colors.blue : Colors.grey,
-                    child: Text(
-                      device.icon ?? '🎚️',
-                      style: const TextStyle(fontSize: 18),
-                    ),
+                  DeviceAvatar(
+                    icon: device.icon ?? '🎚️',
+                    avatarPath: device.avatarPath,
+                    size: 40,
+                    isActive: value > 0,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -276,6 +331,58 @@ class RoomDeviceList extends StatelessWidget {
                         provider.toggleDevice(device.id);
                       },
                     ),
+                  // Menu 3 chấm
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        Navigator.pushNamed(
+                          context,
+                          '/edit_device',
+                          arguments: device,
+                        );
+                      } else if (value == 'delete') {
+                        _showDeleteConfirmation(context, device, provider);
+                      } else if (value == 'move_room') {
+                        _showMoveRoomDialog(context, device, provider);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 20),
+                            SizedBox(width: 8),
+                            Text('Sửa thiết bị'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'move_room',
+                        child: Row(
+                          children: [
+                            Icon(Icons.swap_horiz, size: 20),
+                            SizedBox(width: 8),
+                            Text('Chuyển phòng'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 20, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text(
+                              'Xóa thiết bị',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    icon: Icon(Icons.more_vert),
+                  ),
                 ],
               ),
 
@@ -358,11 +465,15 @@ class RoomDeviceList extends StatelessWidget {
   }
 
   double _getSliderMax(Device device) {
-    return device.type == DeviceType.fan ? 255 : 180;
+    if (device.type == DeviceType.fan) return 255;
+    // For servo: check if it's 360° servo
+    return (device.isServo360 == true) ? 360 : 180;
   }
 
   int _getSliderDivisions(Device device) {
-    return device.type == DeviceType.fan ? 10 : 18;
+    if (device.type == DeviceType.fan) return 10;
+    // For servo: more divisions for 360° servo
+    return (device.isServo360 == true) ? 36 : 18;
   }
 
   String _getSliderValueText(Device device, int value) {
@@ -391,6 +502,146 @@ class RoomDeviceList extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    Device device,
+    DeviceProvider provider,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc chắn muốn xóa thiết bị "${device.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final success = await provider.removeDevice(device.id);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success
+                    ? '✅ Đã xóa thiết bị "${device.name}"'
+                    : '❌ Không thể xóa thiết bị',
+              ),
+              backgroundColor: success ? Colors.green : Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ Lỗi: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  void _showMoveRoomDialog(
+    BuildContext context,
+    Device device,
+    DeviceProvider provider,
+  ) {
+    final availableRooms = provider.availableRooms;
+    String? selectedRoom;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Chuyển thiết bị "${device.name}"'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Thiết bị hiện tại ở phòng: ${device.room ?? "Không xác định"}',
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedRoom,
+                  decoration: const InputDecoration(
+                    labelText: 'Chọn phòng đích',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: availableRooms
+                      .where((room) => room != device.room)
+                      .map(
+                        (room) =>
+                            DropdownMenuItem(value: room, child: Text(room)),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedRoom = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: selectedRoom != null
+                    ? () async {
+                        try {
+                          await provider.moveDeviceToRoom(
+                            device.id,
+                            selectedRoom!,
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '✅ Đã chuyển "${device.name}" sang phòng "$selectedRoom"',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                          Navigator.pop(context);
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('❌ Lỗi: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Chuyển'),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

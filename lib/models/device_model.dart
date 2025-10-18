@@ -7,7 +7,8 @@ class Device {
   final String deviceCode; // 🔑 MÃ THIẾT BỊ (6 KÝ TỰ)
   final DeviceType type;
   bool state;
-  int? value; // For servo angles (0-180)
+  int? value; // For servo angles (0-180 or 0-360)
+  final bool? isServo360; // For servo type: true = 360°, false = 180°
   final String? icon;
   final String? avatarPath; // 🎨 THÊM FIELD ẢNH AVATAR
   final String? room;
@@ -27,6 +28,7 @@ class Device {
     required this.type,
     this.state = false,
     this.value,
+    this.isServo360, // For servo type: true = 360°, false = 180°
     this.icon,
     this.avatarPath, // 🎨 THÊM PARAMETER
     this.room,
@@ -53,6 +55,8 @@ class Device {
       ),
       state: json['state'] ?? false,
       value: json['value'],
+      isServo360:
+          json['isServo360'], // For servo type: true = 360°, false = 180°
       icon: json['icon'],
       avatarPath: json['avatarPath'], // 🎨 THÊM VÀO fromJson
       room: json['room'],
@@ -79,6 +83,7 @@ class Device {
       'type': type.toString().split('.').last,
       'state': state,
       'value': value,
+      'isServo360': isServo360, // For servo type: true = 360°, false = 180°
       'icon': icon,
       'avatarPath': avatarPath, // 🎨 THÊM VÀO toJson
       'room': room,
@@ -98,6 +103,7 @@ class Device {
     DeviceType? type,
     bool? state,
     int? value,
+    bool? isServo360, // For servo type: true = 360°, false = 180°
     String? icon,
     String? avatarPath, // 🎨 THÊM VÀO copyWith
     String? room,
@@ -115,6 +121,9 @@ class Device {
       type: type ?? this.type,
       state: state ?? this.state,
       value: value ?? this.value,
+      isServo360:
+          isServo360 ??
+          this.isServo360, // For servo type: true = 360°, false = 180°
       icon: icon ?? this.icon,
       avatarPath: avatarPath ?? this.avatarPath, // 🎨 THÊM VÀO copyWith
       room: room ?? this.room,

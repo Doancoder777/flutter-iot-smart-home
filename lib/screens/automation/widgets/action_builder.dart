@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/device_provider.dart';
+import '../../../widgets/device_avatar.dart';
 
 /// Widget xây dựng hành động cho quy tắc tự động
 class ActionBuilder extends StatefulWidget {
@@ -64,6 +65,10 @@ class _ActionBuilderState extends State<ActionBuilder> {
             .toString()
             .split('.')
             .last, // Convert enum to string
+        'icon': device.icon,
+        'avatarPath': device.avatarPath,
+        'isServo360':
+            device.isServo360, // For servo type: true = 360°, false = 180°
       };
     }).toList();
   }
@@ -150,6 +155,24 @@ class _ActionBuilderState extends State<ActionBuilder> {
     });
   }
 
+  // Lấy góc tối đa của servo dựa trên device type
+  double _getServoMaxAngle() {
+    if (_devices.isEmpty) return 180.0;
+
+    final deviceInfo = _devices.firstWhere(
+      (d) => d['id'] == _device,
+      orElse: () => <String, dynamic>{
+        'id': '',
+        'name': 'No device',
+        'type': 'relay',
+        'isServo360': false,
+      },
+    );
+
+    // Kiểm tra nếu device có isServo360 = true thì dùng 360°, ngược lại 180°
+    return (deviceInfo['isServo360'] == true) ? 360.0 : 180.0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedDevice = _devices.firstWhere(
@@ -187,7 +210,20 @@ class _ActionBuilderState extends State<ActionBuilder> {
               items: _devices.map((device) {
                 return DropdownMenuItem<String>(
                   value: device['id'] as String,
-                  child: Text(device['name'] as String),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DeviceAvatar(
+                        icon: device['icon'] ?? '⚡',
+                        avatarPath: device['avatarPath'],
+                        size: 24,
+                        isActive:
+                            false, // Không cần active state trong dropdown
+                      ),
+                      const SizedBox(width: 8),
+                      Text(device['name'] as String),
+                    ],
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -219,8 +255,8 @@ class _ActionBuilderState extends State<ActionBuilder> {
               Slider(
                 value: _servoAngle.toDouble(),
                 min: 0,
-                max: 180,
-                divisions: 18,
+                max: _getServoMaxAngle(),
+                divisions: _getServoMaxAngle() ~/ 10,
                 label: '$_servoAngle°',
                 onChanged: (value) {
                   setState(() {
@@ -234,14 +270,11 @@ class _ActionBuilderState extends State<ActionBuilder> {
               Row(
                 children: [
                   // Avatar giống quản lý thiết bị
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.toys, size: 24, color: Colors.blue),
+                  DeviceAvatar(
+                    icon: selectedDevice['icon'] ?? '🌪️',
+                    avatarPath: selectedDevice['avatarPath'],
+                    size: 50,
+                    isActive: _fanSpeed > 0,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

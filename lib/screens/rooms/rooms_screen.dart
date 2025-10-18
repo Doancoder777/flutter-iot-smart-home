@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 import '../../providers/device_provider.dart';
 import '../home/widgets/room_card.dart';
 import 'room_detail_screen.dart';
+import '../../config/app_colors.dart';
 
 /// Màn hình danh sách các phòng - Lấy device count thật từ DeviceProvider
 class RoomsScreen extends StatelessWidget {
-  const RoomsScreen({Key? key}) : super(key: key);
+  RoomsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +62,14 @@ class RoomsScreen extends StatelessWidget {
                           ),
                         );
                       },
+                      onEdit: () => _editRoom(
+                        context,
+                        room['name'],
+                        room['icon'],
+                        deviceProvider,
+                      ),
+                      onDelete: () =>
+                          _deleteRoom(context, room['name'], deviceProvider),
                     );
                   },
                 ),
@@ -190,12 +199,272 @@ class RoomsScreen extends StatelessWidget {
     }
   }
 
-  // void _showAddRoomDialog(BuildContext context) { // Unused method - commented out
-  //   // TODO: Implement add room functionality
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     const SnackBar(
-  //       content: Text('Tính năng thêm phòng sẽ có trong phiên bản sau'),
-  //     ),
-  //   );
-  // }
+  // Phương thức sửa phòng
+  void _editRoom(
+    BuildContext context,
+    String roomName,
+    IconData currentIcon,
+    DeviceProvider deviceProvider,
+  ) {
+    final TextEditingController roomNameController = TextEditingController(
+      text: roomName,
+    );
+    String selectedAvatar = _getRoomIconString(currentIcon);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sửa phòng'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: roomNameController,
+              decoration: const InputDecoration(
+                labelText: 'Tên phòng',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Chọn avatar:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 120,
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 6,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: _availableAvatars.length,
+                itemBuilder: (context, index) {
+                  final avatar = _availableAvatars[index];
+                  final isSelected = selectedAvatar == avatar;
+
+                  return GestureDetector(
+                    onTap: () {
+                      selectedAvatar = avatar;
+                      Navigator.pop(context);
+                      _editRoom(
+                        context,
+                        roomNameController.text,
+                        _getIconFromString(avatar),
+                        deviceProvider,
+                      );
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary.withOpacity(0.2)
+                            : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          avatar,
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newRoomName = roomNameController.text.trim();
+              if (newRoomName.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Vui lòng nhập tên phòng'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              try {
+                await deviceProvider.updateRoom(
+                  roomName,
+                  newRoomName,
+                  selectedAvatar,
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ Đã cập nhật phòng "$newRoomName"'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                Navigator.pop(context);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ Lỗi: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Phương thức xóa phòng
+  void _deleteRoom(
+    BuildContext context,
+    String roomName,
+    DeviceProvider deviceProvider,
+  ) async {
+    final deviceCount = deviceProvider.devices
+        .where((d) => d.room == roomName)
+        .length;
+
+    if (deviceCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Không thể xóa phòng "$roomName" vì còn $deviceCount thiết bị',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: Text('Bạn có chắc chắn muốn xóa phòng "$roomName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await deviceProvider.deleteRoom(roomName);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Đã xóa phòng "$roomName"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ Lỗi: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  // Danh sách avatar có sẵn
+  final List<String> _availableAvatars = [
+    '🏠',
+    '🏡',
+    '🏢',
+    '🏬',
+    '🏭',
+    '🏪',
+    '🏫',
+    '🏩',
+    '🏨',
+    '🏦',
+    '🏥',
+    '🏤',
+    '🏣',
+    '🏰',
+    '🏯',
+    '🏮',
+    '🏭',
+    '🏬',
+    '🏫',
+    '🏪',
+    '🏨',
+    '🏦',
+    '🏥',
+    '🏤',
+    '🏣',
+    '🏰',
+    '🏯',
+    '🏮',
+    '🏭',
+    '🏬',
+    '🏫',
+    '🏪',
+    '🏨',
+    '🏦',
+    '🏥',
+    '🏤',
+    '🏣',
+    '🏰',
+    '🏯',
+    '🏮',
+  ];
+
+  // Helper methods để convert giữa IconData và String
+  String _getRoomIconString(IconData icon) {
+    // Map IconData to emoji string
+    if (icon == Icons.living) return '🏠';
+    if (icon == Icons.bed) return '🛏️';
+    if (icon == Icons.kitchen) return '🍳';
+    if (icon == Icons.bathtub) return '🛁';
+    if (icon == Icons.yard) return '🌳';
+    if (icon == Icons.garage) return '🚗';
+    return '🏠'; // default
+  }
+
+  IconData _getIconFromString(String emoji) {
+    // Map emoji string to IconData
+    if (emoji == '🏠' || emoji == '🏡') return Icons.living;
+    if (emoji == '🛏️') return Icons.bed;
+    if (emoji == '🍳') return Icons.kitchen;
+    if (emoji == '🛁') return Icons.bathtub;
+    if (emoji == '🌳') return Icons.yard;
+    if (emoji == '🚗') return Icons.garage;
+    return Icons.room; // default
+  }
 }

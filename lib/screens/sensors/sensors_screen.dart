@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/sensor_provider.dart';
 import '../../models/user_sensor.dart';
 import '../../config/app_colors.dart';
+import '../../widgets/sensor_avatar.dart';
 import 'add_sensor_screen.dart';
 
 class SensorsScreen extends StatelessWidget {
@@ -203,7 +204,12 @@ class SensorsScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text(sensor.icon, style: const TextStyle(fontSize: 24)),
+                  SensorAvatar(
+                    icon: sensor.icon,
+                    avatarPath: sensor.avatarPath,
+                    size: 40,
+                    isActive: true, // Sensor luôn active khi hiển thị
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -255,7 +261,12 @@ class SensorsScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
-            child: Text(sensor.icon, style: const TextStyle(fontSize: 20)),
+            child: SensorAvatar(
+              icon: sensor.icon,
+              avatarPath: sensor.avatarPath,
+              size: 30,
+              isActive: true,
+            ),
           ),
         ),
         title: Text(sensor.displayName),
@@ -358,7 +369,12 @@ class SensorsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(sensor.icon, style: const TextStyle(fontSize: 24)),
+                SensorAvatar(
+                  icon: sensor.icon,
+                  avatarPath: sensor.avatarPath,
+                  size: 40,
+                  isActive: true,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

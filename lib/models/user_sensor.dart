@@ -12,6 +12,7 @@ class UserSensor {
   final Map<String, dynamic>? configuration;
   final DisplayConfig? displayConfig; // 🆕 Cấu hình hiển thị
   final String? customIcon; // 🆕 Icon tùy chỉnh
+  final String? avatarPath; // 🎨 THÊM FIELD ẢNH AVATAR
   final DeviceMqttConfig? mqttConfig; // 📡 MQTT Configuration
   final DateTime createdAt;
   final DateTime? lastUpdateAt;
@@ -28,6 +29,7 @@ class UserSensor {
     this.configuration,
     this.displayConfig,
     this.customIcon,
+    this.avatarPath, // 🎨 THÊM PARAMETER
     this.mqttConfig, // 📡 MQTT Configuration
     required this.createdAt,
     this.lastUpdateAt,
@@ -121,6 +123,7 @@ class UserSensor {
     Map<String, dynamic>? configuration,
     DisplayConfig? displayConfig,
     String? customIcon,
+    String? avatarPath, // 🎨 THÊM VÀO copyWith
     DeviceMqttConfig? mqttConfig,
     DateTime? createdAt,
     DateTime? lastUpdateAt,
@@ -137,6 +140,7 @@ class UserSensor {
       configuration: configuration ?? this.configuration,
       displayConfig: displayConfig ?? this.displayConfig,
       customIcon: customIcon ?? this.customIcon,
+      avatarPath: avatarPath ?? this.avatarPath, // 🎨 THÊM VÀO copyWith
       mqttConfig: mqttConfig ?? this.mqttConfig,
       createdAt: createdAt ?? this.createdAt,
       lastUpdateAt: lastUpdateAt ?? this.lastUpdateAt,
@@ -156,6 +160,7 @@ class UserSensor {
       'configuration': configuration,
       'displayConfig': displayConfig?.toJson(),
       'customIcon': customIcon,
+      'avatarPath': avatarPath, // 🎨 THÊM VÀO toJson
       'mqttConfig': mqttConfig?.toJson(),
       'createdAt': createdAt.toIso8601String(),
       'lastUpdateAt': lastUpdateAt?.toIso8601String(),
@@ -177,6 +182,7 @@ class UserSensor {
           ? DisplayConfig.fromJson(json['displayConfig'])
           : null,
       customIcon: json['customIcon'],
+      avatarPath: json['avatarPath'], // 🎨 THÊM VÀO fromJson
       mqttConfig: json['mqttConfig'] != null
           ? DeviceMqttConfig.fromJson(json['mqttConfig'])
           : null,

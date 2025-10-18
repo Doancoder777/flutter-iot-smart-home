@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:math';
 import '../models/device_model.dart';
 import '../services/image_picker_service.dart';
 import '../services/device_storage_service.dart';
@@ -101,6 +102,28 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
+  /// Cập nhật device
+  Future<void> updateDevice(Device updatedDevice) async {
+    try {
+      final index = _devices.indexWhere((d) => d.id == updatedDevice.id);
+      if (index == -1) {
+        throw Exception('Device not found: ${updatedDevice.id}');
+      }
+
+      // Cập nhật device trong danh sách
+      _devices[index] = updatedDevice;
+      _safeNotify();
+
+      // Auto save changes
+      await saveUserDevices();
+
+      print('✅ Updated device: ${updatedDevice.name}');
+    } catch (e) {
+      print('❌ Error updating device: $e');
+      rethrow;
+    }
+  }
+
   /// Xóa device
   Future<bool> removeDevice(String deviceId) async {
     if (_currentUserId == null) {
@@ -147,20 +170,6 @@ class DeviceProvider extends ChangeNotifier {
       return _devices.firstWhere((d) => d.id == id);
     } catch (e) {
       return null;
-    }
-  }
-
-  /// Cập nhật thiết bị
-  Future<void> updateDevice(Device device) async {
-    final index = _devices.indexWhere((d) => d.id == device.id);
-    if (index != -1) {
-      _devices[index] = device.copyWith(lastUpdated: DateTime.now());
-      _safeNotify();
-
-      // Auto save changes
-      await saveUserDevices();
-
-      print('🔄 Updated device: ${device.name}');
     }
   }
 
@@ -670,5 +679,194 @@ class DeviceProvider extends ChangeNotifier {
     } else {
       notifyListeners();
     }
+  }
+
+  // 🏠 ROOM MANAGEMENT METHODS
+
+  /// Thêm phòng trống mới (không tự động thêm thiết bị)
+  Future<void> addEmptyRoom(String roomName, String avatar) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
+    // Kiểm tra phòng đã tồn tại chưa
+    if (_devices.any((d) => d.room == roomName)) {
+      throw Exception('Phòng "$roomName" đã tồn tại');
+    }
+
+    // Tạo một thiết bị ẩn để đại diện cho phòng
+    // Điều này giúp duy trì danh sách phòng mà không cần thay đổi cấu trúc dữ liệu
+    final roomDevice = Device(
+      id: 'room_${roomName.toLowerCase().replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}',
+      name: roomName,
+      keyName: _normalizeName(roomName),
+      deviceCode: _generateDeviceCode(),
+      type: DeviceType.relay,
+      room: roomName,
+      icon: avatar,
+      avatarPath: null,
+      state: false,
+      value: 0,
+      isServo360: null,
+      mqttConfig: null, // Phòng không cần MQTT config
+      createdAt: DateTime.now(),
+      lastUpdated: DateTime.now(),
+    );
+
+    _devices.add(roomDevice);
+    await _saveAndNotify();
+
+    print('🏠 Added empty room: $roomName');
+  }
+
+  /// Cập nhật phòng (tên và avatar)
+  Future<void> updateRoom(
+    String oldRoomName,
+    String newRoomName,
+    String newAvatar,
+  ) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
+    // Kiểm tra phòng mới đã tồn tại chưa (nếu đổi tên)
+    if (oldRoomName != newRoomName &&
+        _devices.any((d) => d.room == newRoomName)) {
+      throw Exception('Phòng "$newRoomName" đã tồn tại');
+    }
+
+    // Cập nhật tất cả thiết bị trong phòng
+    for (int i = 0; i < _devices.length; i++) {
+      if (_devices[i].room == oldRoomName) {
+        _devices[i] = _devices[i].copyWith(
+          room: newRoomName,
+          icon: _devices[i].id.startsWith('room_')
+              ? newAvatar
+              : _devices[i].icon, // Chỉ cập nhật avatar cho room device
+          lastUpdated: DateTime.now(),
+        );
+      }
+    }
+
+    await _saveAndNotify();
+    print(
+      '🏠 Updated room: "$oldRoomName" -> "$newRoomName" with avatar: $newAvatar',
+    );
+  }
+
+  /// Đổi tên phòng
+  Future<void> renameRoom(String oldRoomName, String newRoomName) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
+    // Kiểm tra phòng mới đã tồn tại chưa
+    if (oldRoomName != newRoomName &&
+        _devices.any((d) => d.room == newRoomName)) {
+      throw Exception('Phòng "$newRoomName" đã tồn tại');
+    }
+
+    // Cập nhật tất cả thiết bị trong phòng
+    bool updated = false;
+    for (int i = 0; i < _devices.length; i++) {
+      if (_devices[i].room == oldRoomName) {
+        _devices[i] = _devices[i].copyWith(room: newRoomName);
+        updated = true;
+      }
+    }
+
+    if (!updated) {
+      throw Exception('Không tìm thấy phòng "$oldRoomName"');
+    }
+
+    await _saveAndNotify();
+    print('🏠 Renamed room: "$oldRoomName" -> "$newRoomName"');
+  }
+
+  /// Xóa phòng (chỉ khi phòng trống)
+  Future<void> deleteRoom(String roomName) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
+    // Kiểm tra phòng có thiết bị không
+    final devicesInRoom = _devices.where((d) => d.room == roomName).toList();
+    if (devicesInRoom.isNotEmpty) {
+      throw Exception('Không thể xóa phòng có thiết bị');
+    }
+
+    // Xóa tất cả thiết bị trong phòng (nếu có)
+    _devices.removeWhere((d) => d.room == roomName);
+
+    await _saveAndNotify();
+    print('🏠 Deleted room: $roomName');
+  }
+
+  /// Di chuyển thiết bị sang phòng khác
+  Future<void> moveDeviceToRoom(String deviceId, String newRoomName) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
+    final index = _devices.indexWhere((d) => d.id == deviceId);
+    if (index == -1) {
+      throw Exception('Không tìm thấy thiết bị');
+    }
+
+    _devices[index] = _devices[index].copyWith(room: newRoomName);
+    await _saveAndNotify();
+
+    print('🏠 Moved device ${_devices[index].name} to room: $newRoomName');
+  }
+
+  /// Lấy danh sách phòng có sẵn (loại bỏ phòng trống)
+  List<String> get availableRooms {
+    final rooms = <String>{};
+    for (final device in _devices) {
+      if (device.room != null && device.room!.isNotEmpty) {
+        // Chỉ đếm thiết bị thực sự, không đếm room marker
+        if (!device.id.startsWith('room_')) {
+          rooms.add(device.room!);
+        }
+      }
+    }
+    return rooms.toList()..sort();
+  }
+
+  /// Lấy số lượng thiết bị trong phòng
+  int getDeviceCountInRoom(String roomName) {
+    return _devices
+        .where((d) => d.room == roomName && !d.id.startsWith('room_'))
+        .length;
+  }
+
+  // 🛠️ HELPER METHODS FOR ROOM MANAGEMENT
+
+  /// Chuẩn hóa tên phòng thành keyName
+  String _normalizeName(String name) {
+    return name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[àáạảãâầấậẩẫăằắặẳẵ]'), 'a')
+        .replaceAll(RegExp(r'[èéẹẻẽêềếệểễ]'), 'e')
+        .replaceAll(RegExp(r'[ìíịỉĩ]'), 'i')
+        .replaceAll(RegExp(r'[òóọỏõôồốộổỗơờớợởỡ]'), 'o')
+        .replaceAll(RegExp(r'[ùúụủũưừứựửữ]'), 'u')
+        .replaceAll(RegExp(r'[ỳýỵỷỹ]'), 'y')
+        .replaceAll(RegExp(r'[đ]'), 'd')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  /// Tạo mã thiết bị ngẫu nhiên
+  String _generateDeviceCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random();
+    return String.fromCharCodes(
+      Iterable.generate(
+        6,
+        (_) => chars.codeUnitAt(random.nextInt(chars.length)),
+      ),
+    );
   }
 }

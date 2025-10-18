@@ -213,8 +213,12 @@ class DeviceDetailScreen extends StatelessWidget {
                           Slider(
                             value: (currentDevice.value ?? 0).toDouble(),
                             min: 0,
-                            max: 180,
-                            divisions: 180,
+                            max: (currentDevice.isServo360 == true)
+                                ? 360.0
+                                : 180.0,
+                            divisions: (currentDevice.isServo360 == true)
+                                ? 360
+                                : 180,
                             activeColor: AppColors.primary,
                             onChanged: (value) {
                               provider.updateServoValue(

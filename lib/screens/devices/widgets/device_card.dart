@@ -10,6 +10,9 @@ class DeviceCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onPin; // 📌 THÊM CALLBACK PIN
+  final VoidCallback? onEdit; // ✏️ THÊM CALLBACK EDIT
+  final VoidCallback? onDelete; // 🗑️ THÊM CALLBACK DELETE
+  final VoidCallback? onMoveRoom; // 🏠 THÊM CALLBACK CHUYỂN PHÒNG
 
   const DeviceCard({
     Key? key,
@@ -19,6 +22,9 @@ class DeviceCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.onPin, // 📌 THÊM PARAMETER PIN
+    this.onEdit, // ✏️ THÊM PARAMETER EDIT
+    this.onDelete, // 🗑️ THÊM PARAMETER DELETE
+    this.onMoveRoom, // 🏠 THÊM PARAMETER CHUYỂN PHÒNG
   }) : super(key: key);
 
   @override
@@ -98,6 +104,75 @@ class DeviceCard extends StatelessWidget {
                           padding: EdgeInsets.all(4),
                         ),
 
+                      // Menu 3 chấm
+                      if (onEdit != null ||
+                          onDelete != null ||
+                          onMoveRoom != null)
+                        PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'edit' && onEdit != null) {
+                              onEdit!();
+                            } else if (value == 'delete' && onDelete != null) {
+                              onDelete!();
+                            } else if (value == 'move_room' &&
+                                onMoveRoom != null) {
+                              onMoveRoom!();
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            if (onEdit != null)
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Sửa thiết bị'),
+                                  ],
+                                ),
+                              ),
+                            if (onMoveRoom != null)
+                              PopupMenuItem<String>(
+                                value: 'move_room',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.swap_horiz, size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Chuyển phòng'),
+                                  ],
+                                ),
+                              ),
+                            if (onDelete != null)
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.delete,
+                                      size: 20,
+                                      color: Colors.red,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Xóa thiết bị',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                          icon: Icon(
+                            Icons.more_vert,
+                            color: Colors.grey,
+                            size: 20,
+                          ),
+                          constraints: BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          padding: EdgeInsets.all(4),
+                        ),
+
                       // Device Control
                       if (device.isRelay && onToggle != null)
                         Switch(
@@ -124,11 +199,11 @@ class DeviceCard extends StatelessWidget {
                       child: Slider(
                         value: ((device.value ?? 0).toDouble()).clamp(
                           0.0,
-                          180.0,
+                          (device.isServo360 == true) ? 360.0 : 180.0,
                         ),
                         min: 0,
-                        max: 180,
-                        divisions: 180,
+                        max: (device.isServo360 == true) ? 360 : 180,
+                        divisions: (device.isServo360 == true) ? 360 : 180,
                         label: '${device.value}°',
                         onChanged: (value) =>
                             onValueChange?.call(value.toInt()),
@@ -146,40 +221,80 @@ class DeviceCard extends StatelessWidget {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: [0, 45, 90, 135, 180].map((angle) {
-                      return Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          height: 28,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              print('Servo preset button pressed: ${angle}°');
-                              onValueChange?.call(angle);
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: (device.value == angle)
-                                  ? AppColors.primary
-                                  : Colors.grey[200],
-                              foregroundColor: (device.value == angle)
-                                  ? Colors.white
-                                  : Colors.black87,
-                              padding: EdgeInsets.symmetric(horizontal: 12),
-                              minimumSize: Size(0, 28),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                    children: (device.isServo360 == true)
+                        ? [0, 90, 180, 270, 360].map((angle) {
+                            return Padding(
+                              padding: EdgeInsets.only(right: 8),
+                              child: SizedBox(
+                                height: 28,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    print(
+                                      'Servo preset button pressed: ${angle}°',
+                                    );
+                                    onValueChange?.call(angle);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: (device.value == angle)
+                                        ? AppColors.primary
+                                        : Colors.grey[200],
+                                    foregroundColor: (device.value == angle)
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    minimumSize: Size(0, 28),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${angle}°',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              '${angle}°',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
+                            );
+                          }).toList()
+                        : [0, 45, 90, 135, 180].map((angle) {
+                            return Padding(
+                              padding: EdgeInsets.only(right: 8),
+                              child: SizedBox(
+                                height: 28,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    print(
+                                      'Servo preset button pressed: ${angle}°',
+                                    );
+                                    onValueChange?.call(angle);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: (device.value == angle)
+                                        ? AppColors.primary
+                                        : Colors.grey[200],
+                                    foregroundColor: (device.value == angle)
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    minimumSize: Size(0, 28),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${angle}°',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                            );
+                          }).toList(),
                   ),
                 ),
               ],

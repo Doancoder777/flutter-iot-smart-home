@@ -16,6 +16,8 @@ import 'screens/home/home_screen.dart';
 import 'screens/devices/devices_screen.dart';
 import 'screens/devices/device_detail_screen.dart';
 import 'screens/devices/add_device_screen.dart';
+import 'screens/devices/edit_device_screen.dart';
+import 'screens/rooms/room_management_screen.dart';
 import 'screens/sensors/sensors_screen.dart';
 import 'screens/sensors/add_sensor_screen.dart';
 import 'screens/sensors/edit_sensor_screen.dart';
@@ -99,6 +101,11 @@ class MyApp extends StatelessWidget {
               '/home': (context) => HomeScreen(),
               '/devices': (context) => DevicesScreen(),
               '/add_device': (context) => AddDeviceScreen(),
+              '/edit_device': (context) {
+                final device =
+                    ModalRoute.of(context)!.settings.arguments as Device;
+                return EditDeviceScreen(device: device);
+              },
               '/sensors': (context) => SensorsScreen(),
               '/add_sensor': (context) => AddSensorScreen(),
               '/dust_chart': (context) => DustChartScreen(),
@@ -112,6 +119,7 @@ class MyApp extends StatelessWidget {
               '/onboarding': (context) => OnboardingScreen(),
               '/rooms': (context) => RoomsScreen(),
               '/add_room': (context) => AddRoomScreen(),
+              '/room_management': (context) => RoomManagementScreen(),
               '/notifications': (context) => NotificationsScreen(),
             },
             onGenerateRoute: (settings) {

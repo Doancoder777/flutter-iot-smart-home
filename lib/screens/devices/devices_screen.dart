@@ -75,6 +75,9 @@ class DevicesScreen extends StatelessWidget {
                         onTap: () => _showDeviceDetail(context, device),
                         onLongPress: () => _showDeviceMenu(context, device),
                         onPin: () => _togglePin(context, device.id),
+                        onEdit: () => _editDevice(context, device),
+                        onDelete: () => _deleteDevice(context, device),
+                        onMoveRoom: () => _moveDeviceToRoom(context, device),
                       ),
                     );
                   }).toList(),
@@ -98,6 +101,9 @@ class DevicesScreen extends StatelessWidget {
                         onTap: () => _showDeviceDetail(context, device),
                         onLongPress: () => _showDeviceMenu(context, device),
                         onPin: () => _togglePin(context, device.id),
+                        onEdit: () => _editDevice(context, device),
+                        onDelete: () => _deleteDevice(context, device),
+                        onMoveRoom: () => _moveDeviceToRoom(context, device),
                       ),
                     );
                   }).toList(),
@@ -124,6 +130,9 @@ class DevicesScreen extends StatelessWidget {
                         onTap: () => _showDeviceDetail(context, device),
                         onLongPress: () => _showDeviceMenu(context, device),
                         onPin: () => _togglePin(context, device.id),
+                        onEdit: () => _editDevice(context, device),
+                        onDelete: () => _deleteDevice(context, device),
+                        onMoveRoom: () => _moveDeviceToRoom(context, device),
                       ),
                     );
                   }).toList(),
@@ -472,5 +481,108 @@ class DevicesScreen extends StatelessWidget {
         );
       }
     }
+  }
+
+  void _moveDeviceToRoom(BuildContext context, Device device) {
+    final deviceProvider = Provider.of<DeviceProvider>(context, listen: false);
+    final availableRooms = deviceProvider.availableRooms;
+    String? selectedRoom;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Chuyển thiết bị "${device.name}"'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Thiết bị hiện tại ở phòng: ${device.room ?? "Không xác định"}',
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedRoom,
+                  decoration: const InputDecoration(
+                    labelText: 'Chọn phòng đích',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: availableRooms
+                      .where((room) => room != device.room)
+                      .map(
+                        (room) =>
+                            DropdownMenuItem(value: room, child: Text(room)),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedRoom = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: selectedRoom != null
+                    ? () async {
+                        try {
+                          await deviceProvider.moveDeviceToRoom(
+                            device.id,
+                            selectedRoom!,
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '✅ Đã chuyển "${device.name}" sang phòng "$selectedRoom"',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                          Navigator.pop(context);
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('❌ Lỗi: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Chuyển'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _editDevice(BuildContext context, Device device) {
+    Navigator.pushNamed(context, '/edit_device', arguments: device).then((
+      result,
+    ) {
+      if (result == true && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Đã cập nhật thiết bị "${device.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
   }
 }
