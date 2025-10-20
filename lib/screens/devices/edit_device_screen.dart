@@ -301,6 +301,41 @@ class _EditDeviceScreenState extends State<EditDeviceScreen> {
             return null;
           },
         ),
+        SizedBox(height: 8),
+
+        // 🚀 QUICK SELECT BROKERS (FOR TESTING)
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _mqttBrokerController.text =
+                      '16257efaa31f4843a11e19f83c34e594.s1.eu.hivemq.cloud';
+                });
+              },
+              child: Chip(
+                avatar: Icon(Icons.cloud_circle, size: 18, color: Colors.blue),
+                label: Text('Broker 94', style: TextStyle(fontSize: 12)),
+                backgroundColor: Colors.blue.shade50,
+              ),
+            ),
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _mqttBrokerController.text =
+                      '26d1fcc0724b46c495e45a93d79c78d2.s1.eu.hivemq.cloud';
+                });
+              },
+              child: Chip(
+                avatar: Icon(Icons.cloud_circle, size: 18, color: Colors.green),
+                label: Text('Broker 78', style: TextStyle(fontSize: 12)),
+                backgroundColor: Colors.green.shade50,
+              ),
+            ),
+          ],
+        ),
         SizedBox(height: 16),
         Row(
           children: [
