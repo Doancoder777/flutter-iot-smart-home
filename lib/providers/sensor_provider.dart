@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:async';
 import '../models/sensor_data.dart';
 import '../models/user_sensor.dart';
 import '../models/sensor_type.dart';
 import '../models/device_mqtt_config.dart';
 import '../services/local_storage_service.dart';
-import '../services/sensor_config_service.dart';
+import '../services/firestore_sensor_service.dart';
 import '../services/notification_service.dart';
 import '../config/constants.dart';
 
 class SensorProvider extends ChangeNotifier {
-  final LocalStorageService _storageService;
+  final LocalStorageService _storageService; // Giữ lại cho history (in-memory)
   final NotificationService _notificationService;
-  late final SensorConfigService _sensorConfigService;
+  final FirestoreSensorService _firestoreService = FirestoreSensorService();
 
   SensorData _currentData = SensorData.empty();
   List<SensorData> _history = [];
@@ -22,6 +23,9 @@ class SensorProvider extends ChangeNotifier {
   bool _soilAlertShown = false;
   bool _dustAlertShown = false;
   String? _currentUserId; // User isolation
+
+  // 🔴 Real-time listener subscription
+  StreamSubscription<List<UserSensor>>? _sensorsSubscription;
 
   SensorData get currentData => _currentData;
   List<SensorData> get history => _history;
@@ -38,7 +42,6 @@ class SensorProvider extends ChangeNotifier {
   bool get motionDetected => _currentData.motionDetected;
 
   SensorProvider(this._storageService, this._notificationService) {
-    _sensorConfigService = SensorConfigService(_storageService);
     // Không load history ngay, chờ setCurrentUser
   }
 
@@ -46,10 +49,14 @@ class SensorProvider extends ChangeNotifier {
   Future<void> setCurrentUser(String? userId) async {
     if (_currentUserId == userId) return;
 
+    // 🛑 HỦY LISTENER CŨ
+    _sensorsSubscription?.cancel();
+    _sensorsSubscription = null;
+
     _currentUserId = userId;
 
     if (userId != null) {
-      await _loadUserSensors();
+      await _setupRealtimeListener(userId);
       _loadHistory();
     } else {
       _history = [];
@@ -58,26 +65,38 @@ class SensorProvider extends ChangeNotifier {
     }
   }
 
-  /// Load user sensors từ storage
-  Future<void> _loadUserSensors() async {
-    if (_currentUserId == null) return;
-
+  /// Setup real-time listener để tự động sync sensors từ Firestore
+  Future<void> _setupRealtimeListener(String userId) async {
     try {
-      _userSensors = await _sensorConfigService.getUserSensors(_currentUserId!);
-      _safeNotify();
-      print(
-        '📊 Loaded ${_userSensors.length} sensors for user: $_currentUserId',
-      );
+      debugPrint('👂 Setting up real-time listener for sensors...');
 
-      // Debug: List loaded sensors
-      for (final sensor in _userSensors) {
-        print(
-          '🐞 DEBUG: Loaded sensor: ${sensor.displayName} (${sensor.deviceCode})',
-        );
-      }
+      // 🔴 LẮng nghe real-time changes từ Firestore
+      _sensorsSubscription = _firestoreService
+          .watchUserSensors(userId)
+          .listen(
+            (sensors) {
+              debugPrint(
+                '📡 Received real-time sensor update: ${sensors.length} sensors',
+              );
+
+              _userSensors = sensors;
+              _safeNotify();
+
+              // Debug: List loaded sensors
+              for (final sensor in _userSensors) {
+                print(
+                  '🐞 DEBUG: Loaded sensor: ${sensor.displayName} (${sensor.deviceCode})',
+                );
+              }
+            },
+            onError: (error) {
+              debugPrint('❌ Error in real-time sensor listener: $error');
+            },
+          );
+
+      debugPrint('✅ Real-time sensor listener setup complete');
     } catch (e) {
-      print('❌ Error loading user sensors: $e');
-      _userSensors = [];
+      debugPrint('❌ Error setting up real-time sensor listener: $e');
     }
   }
 
@@ -131,17 +150,15 @@ class SensorProvider extends ChangeNotifier {
           break;
       }
 
-      // Cập nhật sensor value
-      await _sensorConfigService.updateSensorValue(
+      // 🔥 CẬP NHẬT SENSOR VALUE VÀO FIRESTORE
+      await _firestoreService.updateSensorValue(
         _currentUserId!,
-        topic,
+        sensor.id,
         value,
       );
 
-      // Reload sensors để cập nhật lastValue
-      await _loadUserSensors();
-
-      // Cập nhật currentData cho backward compatibility
+      // Real-time listener sẽ tự động update _userSensors
+      // Nhưng để đảm bảo UI update ngay, ta cập nhật currentData
       _updateCurrentDataFromSensors();
 
       print('📊 Updated sensor: ${sensor.displayName} = $value');
@@ -211,6 +228,9 @@ class SensorProvider extends ChangeNotifier {
 
   /// Clear user data when logout
   void clearUserData() {
+    _sensorsSubscription?.cancel();
+    _sensorsSubscription = null;
+
     _currentUserId = null;
     _history = [];
     _userSensors = [];
@@ -227,24 +247,23 @@ class SensorProvider extends ChangeNotifier {
   Future<void> updateSensor(UserSensor sensor) async {
     if (_currentUserId == null) return;
 
-    await _sensorConfigService.updateUserSensor(_currentUserId!, sensor);
-    await _loadUserSensors();
+    // 🔥 UPDATE VÀO FIRESTORE → Real-time listener sẽ tự động update _userSensors
+    await _firestoreService.updateSensor(_currentUserId!, sensor);
   }
 
   /// Xóa sensor
   Future<void> deleteSensor(String sensorId) async {
     if (_currentUserId == null) return;
 
-    await _sensorConfigService.deleteUserSensor(_currentUserId!, sensorId);
-    await _loadUserSensors();
+    // 🔥 XÓA KHỎI FIRESTORE → Real-time listener sẽ tự động update _userSensors
+    await _firestoreService.deleteSensor(_currentUserId!, sensorId);
   }
 
-  /// Tạo default sensors cho user mới
+  /// Tạo default sensors cho user mới (DEPRECATED - không cần nữa)
+  @Deprecated('Create sensors manually via addSensor')
   Future<void> createDefaultSensors() async {
-    if (_currentUserId == null) return;
-
-    await _sensorConfigService.createDefaultSensorsForUser(_currentUserId!);
-    await _loadUserSensors();
+    // Không cần tạo default sensors nữa
+    // User sẽ tự tạo sensors qua UI
   }
 
   void updateSensorData(SensorData data) {
@@ -547,31 +566,25 @@ class SensorProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
-    // Add to current list
-    _userSensors.add(userSensor);
-
-    // Save using SensorConfigService
-    await _sensorConfigService.saveUserSensors(_currentUserId!, _userSensors);
-    _safeNotify();
+    // 🔥 LƯU VÀO FIRESTORE → Real-time listener sẽ tự động update _userSensors
+    await _firestoreService.addSensor(_currentUserId!, userSensor);
 
     print('✅ Added sensor: $displayName with device code: $deviceCode');
-
-    // Debug: Check storage after saving
-    await debugCheckStorage();
   }
 
-  /// Debug method to check storage
+  /// Debug method to check storage (DEPRECATED)
+  @Deprecated('Use Firestore Console to check data')
   Future<void> debugCheckStorage() async {
     if (_currentUserId == null) {
       print('🐞 DEBUG: No current user set');
       return;
     }
 
-    print('🐞 DEBUG: Checking storage for user: $_currentUserId');
+    print('🐞 DEBUG: Checking Firestore for user: $_currentUserId');
     print('🐞 DEBUG: Current sensors in memory: ${_userSensors.length}');
 
     try {
-      final storedSensors = await _sensorConfigService.getUserSensors(
+      final storedSensors = await _firestoreService.loadUserSensors(
         _currentUserId!,
       );
       print('🐞 DEBUG: Stored sensors: ${storedSensors.length}');
@@ -582,7 +595,7 @@ class SensorProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
-      print('🐞 DEBUG: Error reading storage: $e');
+      print('🐞 DEBUG: Error reading Firestore: $e');
     }
   }
 
@@ -594,5 +607,11 @@ class SensorProvider extends ChangeNotifier {
         notifyListeners();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _sensorsSubscription?.cancel(); // 🔴 Cancel real-time listener
+    super.dispose();
   }
 }

@@ -3,11 +3,11 @@ import '../../../models/automation_rule.dart';
 import '../../../models/sensor_data.dart';
 import '../../../models/user_sensor.dart';
 import '../../../models/device_model.dart';
-import '../data/automation_database.dart';
+// import '../data/automation_database.dart'; // ❌ REMOVED - Using Firestore now
 
 /// Rule engine that evaluates automation rules against sensor data
 class RuleEngineService {
-  final AutomationDatabase _database;
+  // final AutomationDatabase _database; // ❌ REMOVED - Using Firestore now
   final Function(String ruleId, List<Action> actions) onRuleTriggered;
   final Function(String ruleId, List<Action> actions)? onRuleEnded;
 
@@ -25,8 +25,8 @@ class RuleEngineService {
   RuleEngineService({
     required this.onRuleTriggered,
     this.onRuleEnded,
-    AutomationDatabase? database,
-  }) : _database = database ?? AutomationDatabase();
+    // AutomationDatabase? database, // ❌ REMOVED - Using Firestore now
+  }); // : _database = database ?? AutomationDatabase();
 
   /// 🔄 UPDATE DATA SOURCES - Call this when user sensors/devices change
   void updateDataSources({
@@ -43,7 +43,9 @@ class RuleEngineService {
   /// Evaluate all enabled rules against current sensor data
   Future<void> evaluateRules(SensorData sensorData) async {
     try {
-      final enabledRules = await _database.getEnabledRules();
+      // ❌ DEPRECATED - Use AutomationProvider with Firestore instead
+      // final enabledRules = await _database.getEnabledRules();
+      final enabledRules = <AutomationRule>[]; // ❌ DISABLED - No database
 
       for (final rule in enabledRules) {
         // Check debounce
@@ -152,28 +154,30 @@ class RuleEngineService {
     }
 
     // Log to database
-    await _database.markRuleTriggered(rule.id);
+    // ❌ DEPRECATED - Use AutomationProvider with Firestore instead
+    // await _database.markRuleTriggered(rule.id);
 
     // Log history with sensor context
-    await _database.logRuleTrigger(
-      ruleId: rule.id,
-      sensorValues: {
-        'temperature': sensorData.temperature,
-        'humidity': sensorData.humidity,
-        'light': sensorData.light,
-        'rain': sensorData.rain,
-        'soilMoisture': sensorData.soilMoisture,
-        'gas': sensorData.gas,
-        'dust': sensorData.dust,
-        'motion': sensorData.motionDetected,
-      },
-      actionsExecuted: actions
-          .map(
-            (a) =>
-                '${a.deviceId}: ${a.action}${a.value != null ? " (${a.value})" : ""}',
-          )
-          .toList(),
-    );
+    // ❌ DEPRECATED - Use AutomationProvider with Firestore instead
+    // await _database.logRuleTrigger(
+    //   ruleId: rule.id,
+    //   sensorValues: {
+    //     'temperature': sensorData.temperature,
+    //     'humidity': sensorData.humidity,
+    //     'light': sensorData.light,
+    //     'rain': sensorData.rain,
+    //     'soilMoisture': sensorData.soilMoisture,
+    //     'gas': sensorData.gas,
+    //     'dust': sensorData.dust,
+    //     'motion': sensorData.motionDetected,
+    //   },
+    //   actionsExecuted: actions
+    //       .map(
+    //         (a) =>
+    //             '${a.deviceId}: ${a.action}${a.value != null ? " (${a.value})" : ""}',
+    //       )
+    //       .toList(),
+    // );
   }
 
   /// Check if rule should be debounced

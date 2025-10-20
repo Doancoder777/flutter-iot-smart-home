@@ -4,16 +4,19 @@ import 'dart:math';
 import 'dart:async';
 import '../models/device_model.dart';
 import '../services/image_picker_service.dart';
-import '../services/device_storage_service.dart';
+import '../services/firestore_device_service.dart';
 import '../services/device_mqtt_service.dart';
 import 'mqtt_provider.dart';
 
 class DeviceProvider extends ChangeNotifier {
   List<Device> _devices = [];
   MqttProvider? _mqttProvider;
-  final DeviceStorageService _storageService = DeviceStorageService();
+  final FirestoreDeviceService _firestoreService = FirestoreDeviceService();
   final DeviceMqttService _deviceMqttService = DeviceMqttService();
   String? _currentUserId;
+
+  // 🔴 Real-time listener subscription
+  StreamSubscription<List<Device>>? _devicesSubscription;
 
   // Thêm biến để theo dõi trạng thái kiểm tra kết nối
   bool _isCheckingConnection = false;
@@ -71,20 +74,66 @@ class DeviceProvider extends ChangeNotifier {
   Future<void> setCurrentUser(String? userId) async {
     if (_currentUserId == userId) return;
 
+    // 🛑 HỦY LISTENER CŨ
+    _devicesSubscription?.cancel();
+    _devicesSubscription = null;
+    stopAutoPing();
+
     _currentUserId = userId;
 
     if (userId != null) {
-      await loadUserDevices(userId);
+      await _setupRealtimeListener(userId);
     } else {
       _devices = [];
       _safeNotify();
     }
   }
 
-  /// Load devices của user từ storage
+  /// Setup real-time listener để tự động sync devices từ Firestore
+  Future<void> _setupRealtimeListener(String userId) async {
+    try {
+      debugPrint('👂 Setting up real-time listener for user $userId...');
+
+      // 🔴 LẮng nghe real-time changes từ Firestore
+      _devicesSubscription = _firestoreService
+          .watchUserDevices(userId)
+          .listen(
+            (devices) {
+              debugPrint(
+                '📡 Received real-time update: ${devices.length} devices',
+              );
+
+              _devices = devices;
+              _safeNotify();
+
+              // 🐞 DEBUG: Print MQTT topics after loading
+              debugPrintMqttTopics();
+
+              // 📡 BẮT ĐẦU AUTO-PING SAU KHI LOAD DEVICES (chỉ lần đầu)
+              if (_devices.isNotEmpty && _autoPingTimer == null) {
+                debugPrint(
+                  '📡 Starting auto-ping after loading ${_devices.length} devices...',
+                );
+                startAutoPing();
+              }
+            },
+            onError: (error) {
+              debugPrint('❌ Error in real-time listener: $error');
+            },
+          );
+
+      debugPrint('✅ Real-time listener setup complete');
+    } catch (e) {
+      debugPrint('❌ Error setting up real-time listener: $e');
+    }
+  }
+
+  /// Load devices của user từ Firestore (1 lần, không real-time)
+  /// Deprecated: Chỉ dùng khi cần force reload
+  @Deprecated('Use _setupRealtimeListener instead')
   Future<void> loadUserDevices(String userId) async {
     try {
-      final devices = await _storageService.loadUserDevices(userId);
+      final devices = await _firestoreService.loadUserDevices(userId);
       _devices = devices;
       _safeNotify();
       debugPrint('✅ Loaded ${devices.length} devices for user $userId');
@@ -104,12 +153,14 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
-  /// Save devices của user hiện tại
+  /// Save devices của user hiện tại (KHÔNG CẦN NỮA - Firestore tự sync)
+  /// Deprecated: Firestore tự động sync, không cần gọi manual
+  @Deprecated('Firestore auto-syncs, no need to call manually')
   Future<void> saveUserDevices() async {
     if (_currentUserId == null) return;
 
     try {
-      await _storageService.saveUserDevices(_currentUserId!, _devices);
+      await _firestoreService.saveAllDevices(_currentUserId!, _devices);
       debugPrint('✅ Saved ${_devices.length} devices for user $_currentUserId');
     } catch (e) {
       debugPrint('❌ Error saving user devices: $e');
@@ -118,14 +169,13 @@ class DeviceProvider extends ChangeNotifier {
 
   /// Thêm thiết bị mới
   Future<void> addDevice(Device device) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
     try {
-      // Thêm device vào danh sách
-      _devices.add(device);
-      _safeNotify();
-
-      // Auto save changes
-      await saveUserDevices();
-
+      // 🔥 LƯU VÀO FIRESTORE → Real-time listener sẽ tự động update _devices
+      await _firestoreService.addDevice(_currentUserId!, device);
       print('✅ Added device: ${device.name}');
     } catch (e) {
       print('❌ Error adding device: $e');
@@ -226,19 +276,13 @@ class DeviceProvider extends ChangeNotifier {
 
   /// Cập nhật device
   Future<void> updateDevice(Device updatedDevice) async {
+    if (_currentUserId == null) {
+      throw Exception('No current user');
+    }
+
     try {
-      final index = _devices.indexWhere((d) => d.id == updatedDevice.id);
-      if (index == -1) {
-        throw Exception('Device not found: ${updatedDevice.id}');
-      }
-
-      // Cập nhật device trong danh sách
-      _devices[index] = updatedDevice;
-      _safeNotify();
-
-      // Auto save changes
-      await saveUserDevices();
-
+      // 🔥 UPDATE VÀO FIRESTORE → Real-time listener sẽ tự động update _devices
+      await _firestoreService.updateDevice(_currentUserId!, updatedDevice);
       print('✅ Updated device: ${updatedDevice.name}');
     } catch (e) {
       print('❌ Error updating device: $e');
@@ -254,32 +298,17 @@ class DeviceProvider extends ChangeNotifier {
     }
 
     try {
-      final deviceIndex = _devices.indexWhere(
-        (device) => device.id == deviceId,
-      );
-      if (deviceIndex == -1) {
-        debugPrint('❌ Device not found: $deviceId');
-        return false;
-      }
-
-      final removedDevice = _devices[deviceIndex];
+      final device = _devices.firstWhere((d) => d.id == deviceId);
 
       // Xóa avatar nếu có
-      if (removedDevice.avatarPath != null) {
-        await ImagePickerService.deleteOldAvatar(removedDevice.avatarPath);
+      if (device.avatarPath != null) {
+        await ImagePickerService.deleteOldAvatar(device.avatarPath);
       }
 
-      // Xóa khỏi danh sách
-      _devices.removeAt(deviceIndex);
+      // 🔥 XÓA KHỎI FIRESTORE → Real-time listener sẽ tự động update _devices
+      await _firestoreService.deleteDevice(_currentUserId!, deviceId);
 
-      // Lưu vào storage
-      await saveUserDevices();
-
-      _safeNotify();
-
-      debugPrint(
-        '✅ Removed device: ${removedDevice.name} (${removedDevice.id})',
-      );
+      debugPrint('✅ Removed device: ${device.name} ($deviceId)');
       return true;
     } catch (e) {
       debugPrint('❌ Error removing device: $e');
@@ -296,12 +325,14 @@ class DeviceProvider extends ChangeNotifier {
   }
 
   void updateDeviceState(String id, bool state) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index != -1) {
-      _devices[index] = _devices[index].copyWith(state: state);
+      final updatedDevice = _devices[index].copyWith(state: state);
 
       // Gửi lệnh qua MQTT - ưu tiên broker riêng của thiết bị
-      final device = _devices[index];
+      final device = updatedDevice;
       final topic = device.finalMqttTopic;
       final message =
           '{"name": "${device.keyName}", "action": "${state ? "turn_on" : "turn_off"}"}';
@@ -339,20 +370,26 @@ class DeviceProvider extends ChangeNotifier {
         print('❌ FAILED: No MQTT config for device ${device.name}');
       }
 
-      _safeNotify();
+      // 🔥 UPDATE VÀO FIRESTORE (chỉ update field 'state')
+      await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+        'state': state,
+      });
+
       print('🔄 Device ${device.name}: ${state ? "ON" : "OFF"}');
     }
   }
 
   void updateServoValue(String id, int value) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index != -1 &&
         (_devices[index].type == DeviceType.servo ||
             _devices[index].type == DeviceType.fan)) {
-      _devices[index] = _devices[index].copyWith(value: value);
+      final updatedDevice = _devices[index].copyWith(value: value);
 
       // Gửi lệnh qua MQTT - ưu tiên broker riêng của thiết bị
-      final device = _devices[index];
+      final device = updatedDevice;
       final topic = device.finalMqttTopic;
       String message;
 
@@ -378,21 +415,23 @@ class DeviceProvider extends ChangeNotifier {
         print('❌ FAILED: No MQTT config for device ${device.name}');
       }
 
-      _safeNotify();
-
-      // Auto save changes
-      await saveUserDevices();
+      // 🔥 UPDATE VÀO FIRESTORE
+      await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+        'value': value,
+      });
 
       if (id == 'fan_living') {
         int percentage = ((value / 255) * 100).round();
-        print('🔄 Fan ${_devices[index].name}: $percentage% (PWM: $value)');
+        print('🔄 Fan ${device.name}: $percentage% (PWM: $value)');
       } else {
-        print('🔄 Servo ${_devices[index].name}: $value°');
+        print('🔄 Servo ${device.name}: $value°');
       }
     }
   }
 
   void toggleDevice(String id) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index != -1) {
       final device = _devices[index];
@@ -422,12 +461,12 @@ class DeviceProvider extends ChangeNotifier {
           newState = false;
         }
 
-        _devices[index] = device.copyWith(state: newState, value: newSpeed);
+        final updatedDevice = device.copyWith(state: newState, value: newSpeed);
 
         // Gửi JSON command cho quạt - ưu tiên broker riêng của thiết bị
-        String topic = _devices[index].finalMqttTopic;
+        String topic = updatedDevice.finalMqttTopic;
         String message = newState
-            ? '{"command": "speed", "speed": $newSpeed, "mode": "${_devices[index].fanMode}"}'
+            ? '{"command": "speed", "speed": $newSpeed, "mode": "${updatedDevice.fanMode}"}'
             : '{"command": "off"}';
 
         print(
@@ -443,7 +482,7 @@ class DeviceProvider extends ChangeNotifier {
         }
 
         final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
-          device,
+          updatedDevice,
           message,
         );
 
@@ -455,14 +494,20 @@ class DeviceProvider extends ChangeNotifier {
           print('❌ FAILED: No MQTT config for device ${device.name}');
         }
 
+        // 🔥 UPDATE VÀO FIRESTORE
+        await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+          'state': newState,
+          'value': newSpeed,
+        });
+
         print(
-          '🌪️ Fan ${device.name}: ${_devices[index].fanMode.toUpperCase()} (${((_devices[index].fanSpeed / 255) * 100).round()}%)',
+          '🌪️ Fan ${device.name}: ${updatedDevice.fanMode.toUpperCase()} (${((updatedDevice.fanSpeed / 255) * 100).round()}%)',
         );
       } else {
         // 🔌 Xử lý relay thông thường - ưu tiên broker riêng của thiết bị
-        _devices[index] = device.copyWith(state: !currentState);
+        final updatedDevice = device.copyWith(state: !currentState);
 
-        String topic = _devices[index].finalMqttTopic;
+        String topic = updatedDevice.finalMqttTopic;
         String message =
             '{"name": "${device.keyName}", "action": "${(!currentState) ? "turn_on" : "turn_off"}"}';
 
@@ -479,7 +524,7 @@ class DeviceProvider extends ChangeNotifier {
         }
 
         final sentViaDeviceMqtt = await _deviceMqttService.publishToDevice(
-          device,
+          updatedDevice,
           message,
         );
 
@@ -489,32 +534,39 @@ class DeviceProvider extends ChangeNotifier {
           print('❌ FAILED: No MQTT config for device ${device.name}');
         }
 
+        // 🔥 UPDATE VÀO FIRESTORE
+        await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+          'state': !currentState,
+        });
+
         print('🔄 Toggled ${device.name}: ${!currentState ? "ON" : "OFF"}');
       }
-
-      _safeNotify();
-      await saveUserDevices(); // Auto-save
     }
   }
 
   // 📌 TOGGLE PIN CHO ĐIỀU KHIỂN NHANH
   void togglePin(String id) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index != -1) {
-      _devices[index] = _devices[index].copyWith(
-        isPinned: !_devices[index].isPinned,
-      );
-      _safeNotify();
-      await saveUserDevices(); // Auto-save
+      final newPinned = !_devices[index].isPinned;
+
+      // 🔥 UPDATE VÀO FIRESTORE
+      await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+        'isPinned': newPinned,
+      });
 
       print(
-        '📌 ${_devices[index].isPinned ? "Pinned" : "Unpinned"} device: ${_devices[index].name}',
+        '📌 ${newPinned ? "Pinned" : "Unpinned"} device: ${_devices[index].name}',
       );
     }
   }
 
   // 🌪️ ĐIỀU KHIỂN QUẠT CHI TIẾT
   void setFanSpeed(String id, int speed) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index == -1 || !_devices[index].isFan) return;
 
@@ -522,27 +574,36 @@ class DeviceProvider extends ChangeNotifier {
     speed = speed.clamp(0, 255);
     final newState = speed > 0;
 
-    _devices[index] = _devices[index].copyWith(state: newState, value: speed);
+    final updatedDevice = _devices[index].copyWith(
+      state: newState,
+      value: speed,
+    );
 
     // Gửi JSON command
     if (_mqttProvider != null) {
-      String topic = _devices[index].mqttTopic;
+      String topic = updatedDevice.mqttTopic;
       String message = newState
-          ? '{"command": "speed", "speed": $speed, "mode": "${_devices[index].fanMode}"}'
+          ? '{"command": "speed", "speed": $speed, "mode": "${updatedDevice.fanMode}"}'
           : '{"command": "off"}';
       _mqttProvider!.publish(topic, message);
       print('📡 MQTT Fan Speed: $topic -> $message');
     }
 
-    _safeNotify();
-    await saveUserDevices(); // Auto-save
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+      'state': newState,
+      'value': speed,
+    });
+
     print(
-      '🌪️ Fan ${_devices[index].name}: Speed $speed (${((speed / 255) * 100).round()}%)',
+      '🌪️ Fan ${updatedDevice.name}: Speed $speed (${((speed / 255) * 100).round()}%)',
     );
   }
 
   // 🌪️ ĐẶT CHẾ ĐỘ QUẠT
   void setFanMode(String id, String mode) async {
+    if (_currentUserId == null) return;
+
     final index = _devices.indexWhere((d) => d.id == id);
     if (index == -1 || !_devices[index].isFan) return;
 
@@ -565,11 +626,14 @@ class DeviceProvider extends ChangeNotifier {
     }
 
     final newState = speed > 0;
-    _devices[index] = _devices[index].copyWith(state: newState, value: speed);
+    final updatedDevice = _devices[index].copyWith(
+      state: newState,
+      value: speed,
+    );
 
     // Gửi JSON command
     if (_mqttProvider != null) {
-      String topic = _devices[index].mqttTopic;
+      String topic = updatedDevice.mqttTopic;
       String message = newState
           ? '{"command": "preset", "preset": "$mode", "speed": $speed}'
           : '{"command": "off"}';
@@ -577,10 +641,14 @@ class DeviceProvider extends ChangeNotifier {
       print('📡 MQTT Fan Mode: $topic -> $message');
     }
 
-    _safeNotify();
-    await saveUserDevices(); // Auto-save
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.updateDeviceFields(_currentUserId!, id, {
+      'state': newState,
+      'value': speed,
+    });
+
     print(
-      '🌪️ Fan ${_devices[index].name}: ${mode.toUpperCase()} (${((speed / 255) * 100).round()}%)',
+      '🌪️ Fan ${updatedDevice.name}: ${mode.toUpperCase()} (${((speed / 255) * 100).round()}%)',
     );
   }
 
@@ -724,13 +792,15 @@ class DeviceProvider extends ChangeNotifier {
 
   /// Cập nhật tên thiết bị
   void updateDeviceName(String deviceId, String newName) async {
+    if (_currentUserId == null) return;
+
     final deviceIndex = _devices.indexWhere((device) => device.id == deviceId);
     if (deviceIndex == -1) return;
 
-    final oldDevice = _devices[deviceIndex];
-    _devices[deviceIndex] = oldDevice.copyWith(name: newName);
-
-    await _saveAndNotify();
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.updateDeviceFields(_currentUserId!, deviceId, {
+      'name': newName,
+    });
   }
 
   // 🗑️ CLEAR ALL USER DATA (for logout)
@@ -738,6 +808,13 @@ class DeviceProvider extends ChangeNotifier {
     debugPrint('🗑️ DeviceProvider: Clearing all user data...');
 
     try {
+      // Stop auto-ping
+      stopAutoPing();
+
+      // Cancel real-time listener
+      _devicesSubscription?.cancel();
+      _devicesSubscription = null;
+
       // Disconnect MQTT first
       if (_mqttProvider != null) {
         _mqttProvider!.disconnect();
@@ -746,6 +823,9 @@ class DeviceProvider extends ChangeNotifier {
 
       // Clear all devices
       _devices.clear();
+
+      // Clear connection status
+      _deviceConnectionStatus.clear();
 
       // Clear current user
       _currentUserId = null;
@@ -768,28 +848,15 @@ class DeviceProvider extends ChangeNotifier {
     if (_currentUserId == null) return false;
 
     try {
-      // Clear from memory
-      _devices.clear();
+      // 🔥 XÓA TẤT CẢ DEVICES KHỎI FIRESTORE
+      await _firestoreService.deleteAllDevices(_currentUserId!);
 
-      // Clear from storage
-      final success = await _storageService.clearUserDevices(_currentUserId!);
-
-      if (success) {
-        _safeNotify();
-        debugPrint('✅ Cleared all data for user $_currentUserId');
-      }
-
-      return success;
+      debugPrint('✅ Cleared all data for user $_currentUserId');
+      return true;
     } catch (e) {
       debugPrint('❌ Error clearing user data: $e');
       return false;
     }
-  }
-
-  /// Helper method để save và notify
-  Future<void> _saveAndNotify() async {
-    _safeNotify();
-    await saveUserDevices();
   }
 
   void _safeNotify() {
@@ -835,8 +902,8 @@ class DeviceProvider extends ChangeNotifier {
       lastUpdated: DateTime.now(),
     );
 
-    _devices.add(roomDevice);
-    await _saveAndNotify();
+    // 🔥 LƯU VÀO FIRESTORE
+    await _firestoreService.addDevice(_currentUserId!, roomDevice);
 
     print('🏠 Added empty room: $roomName');
   }
@@ -857,20 +924,20 @@ class DeviceProvider extends ChangeNotifier {
       throw Exception('Phòng "$newRoomName" đã tồn tại');
     }
 
-    // Cập nhật tất cả thiết bị trong phòng
-    for (int i = 0; i < _devices.length; i++) {
-      if (_devices[i].room == oldRoomName) {
-        _devices[i] = _devices[i].copyWith(
+    // 🔥 CẬP NHẬT TẤT CẢ DEVICES TRONG PHÒNG
+    for (final device in _devices) {
+      if (device.room == oldRoomName) {
+        final updatedDevice = device.copyWith(
           room: newRoomName,
-          icon: _devices[i].id.startsWith('room_')
+          icon: device.id.startsWith('room_')
               ? newAvatar
-              : _devices[i].icon, // Chỉ cập nhật avatar cho room device
+              : device.icon, // Chỉ cập nhật avatar cho room device
           lastUpdated: DateTime.now(),
         );
+        await _firestoreService.updateDevice(_currentUserId!, updatedDevice);
       }
     }
 
-    await _saveAndNotify();
     print(
       '🏠 Updated room: "$oldRoomName" -> "$newRoomName" with avatar: $newAvatar',
     );
@@ -888,11 +955,13 @@ class DeviceProvider extends ChangeNotifier {
       throw Exception('Phòng "$newRoomName" đã tồn tại');
     }
 
-    // Cập nhật tất cả thiết bị trong phòng
+    // 🔥 CẬP NHẬT TẤT CẢ DEVICES TRONG PHÒNG
     bool updated = false;
-    for (int i = 0; i < _devices.length; i++) {
-      if (_devices[i].room == oldRoomName) {
-        _devices[i] = _devices[i].copyWith(room: newRoomName);
+    for (final device in _devices) {
+      if (device.room == oldRoomName) {
+        await _firestoreService.updateDeviceFields(_currentUserId!, device.id, {
+          'room': newRoomName,
+        });
         updated = true;
       }
     }
@@ -901,7 +970,6 @@ class DeviceProvider extends ChangeNotifier {
       throw Exception('Không tìm thấy phòng "$oldRoomName"');
     }
 
-    await _saveAndNotify();
     print('🏠 Renamed room: "$oldRoomName" -> "$newRoomName"');
   }
 
@@ -917,10 +985,11 @@ class DeviceProvider extends ChangeNotifier {
       throw Exception('Không thể xóa phòng có thiết bị');
     }
 
-    // Xóa tất cả thiết bị trong phòng (nếu có)
-    _devices.removeWhere((d) => d.room == roomName);
+    // 🔥 XÓA TẤT CẢ DEVICES TRONG PHÒNG (nếu có)
+    for (final device in devicesInRoom) {
+      await _firestoreService.deleteDevice(_currentUserId!, device.id);
+    }
 
-    await _saveAndNotify();
     print('🏠 Deleted room: $roomName');
   }
 
@@ -930,15 +999,17 @@ class DeviceProvider extends ChangeNotifier {
       throw Exception('No current user');
     }
 
-    final index = _devices.indexWhere((d) => d.id == deviceId);
-    if (index == -1) {
-      throw Exception('Không tìm thấy thiết bị');
-    }
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('Không tìm thấy thiết bị'),
+    );
 
-    _devices[index] = _devices[index].copyWith(room: newRoomName);
-    await _saveAndNotify();
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.updateDeviceFields(_currentUserId!, deviceId, {
+      'room': newRoomName,
+    });
 
-    print('🏠 Moved device ${_devices[index].name} to room: $newRoomName');
+    print('🏠 Moved device ${device.name} to room: $newRoomName');
   }
 
   /// Lấy danh sách phòng có sẵn (loại bỏ phòng trống)
@@ -1119,6 +1190,7 @@ class DeviceProvider extends ChangeNotifier {
   void dispose() {
     stopAutoPing();
     _connectionCheckTimer?.cancel();
+    _devicesSubscription?.cancel(); // 🔴 Cancel real-time listener
     super.dispose();
   }
 }

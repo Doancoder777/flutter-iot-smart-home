@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'config/app_theme.dart';
 import 'providers/mqtt_provider.dart';
 import 'providers/sensor_provider.dart';
@@ -42,6 +44,9 @@ import 'models/user_sensor.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🔥 KHỞI TẠO FIREBASE TRƯỚC TIÊN
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   // Khởi tạo services
   final mqttService = MqttService();
   final storageService = LocalStorageService();
@@ -68,9 +73,7 @@ void main() async {
           },
         ),
         ChangeNotifierProvider(create: (_) => SettingsProvider(storageService)),
-        ChangeNotifierProvider(
-          create: (_) => AutomationProvider(storageService),
-        ),
+        ChangeNotifierProvider(create: (_) => AutomationProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider(storageService)),
       ],
       child: MyApp(),

@@ -16,10 +16,6 @@
         {
           "client_id": "1024906096119-3p12ic691fcpijbcd3s11desus8ajvue.apps.googleusercontent.com",
           "client_type": 3
-        },
-        {
-          "client_id": "1024906096119-m8gjgnagmk1id4q3qth9r290rmfveumh.apps.googleusercontent.com",
-          "client_type": 1
         }
       ],
       "api_key": [
@@ -33,6 +29,13 @@
             {
               "client_id": "1024906096119-3p12ic691fcpijbcd3s11desus8ajvue.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "1024906096119-h4374lkmrgjdovlgmke6t2qr79ltrdom.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.version3"
+              }
             }
           ]
         }

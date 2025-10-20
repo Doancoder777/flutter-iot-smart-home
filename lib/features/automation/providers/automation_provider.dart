@@ -1,19 +1,25 @@
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../../../models/automation_rule.dart';
 import '../../../models/sensor_data.dart';
 import '../../../models/user_sensor.dart';
 import '../../../models/device_model.dart';
-import '../data/automation_database.dart';
+import '../../../services/firestore_automation_service.dart';
 import '../data/rule_engine_service.dart';
 
 /// Provider for managing automation rules state
 class AutomationProvider with ChangeNotifier {
-  final AutomationDatabase _database = AutomationDatabase();
+  final FirestoreAutomationService _firestoreService =
+      FirestoreAutomationService();
   late final RuleEngineService _ruleEngine;
 
   List<AutomationRule> _rules = [];
   bool _isLoading = false;
   String? _error;
+  String? _currentUserId; // User isolation
+
+  // 🔴 Real-time listener subscription
+  StreamSubscription<List<AutomationRule>>? _rulesSubscription;
 
   // Callback for executing device actions
   final Function(String ruleId, List<Action> actions)? onRuleTriggered;
@@ -29,6 +35,66 @@ class AutomationProvider with ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  /// Set current user và setup real-time listener
+  Future<void> setCurrentUser(String? userId) async {
+    if (_currentUserId == userId) return;
+
+    // 🛑 HỦY LISTENER CŨ
+    _rulesSubscription?.cancel();
+    _rulesSubscription = null;
+
+    _currentUserId = userId;
+
+    if (userId != null) {
+      await _setupRealtimeListener(userId);
+    } else {
+      _rules = [];
+      notifyListeners();
+    }
+  }
+
+  /// Setup real-time listener để tự động sync rules từ Firestore
+  Future<void> _setupRealtimeListener(String userId) async {
+    try {
+      debugPrint('👂 Setting up real-time listener for automation rules...');
+
+      // 🔴 LẮng nghe real-time changes từ Firestore
+      _rulesSubscription = _firestoreService
+          .watchUserRules(userId)
+          .listen(
+            (rules) {
+              debugPrint(
+                '📡 Received real-time rules update: ${rules.length} rules',
+              );
+
+              _rules = rules;
+              notifyListeners();
+            },
+            onError: (error) {
+              debugPrint('❌ Error in real-time rules listener: $error');
+              _setError('Real-time sync error: $error');
+            },
+          );
+
+      debugPrint('✅ Real-time rules listener setup complete');
+    } catch (e) {
+      debugPrint('❌ Error setting up real-time rules listener: $e');
+      _setError('Failed to setup real-time sync: $e');
+    }
+  }
+
+  /// Clear user data when logout
+  void clearUserData() {
+    _rulesSubscription?.cancel();
+    _rulesSubscription = null;
+
+    _currentUserId = null;
+    _rules = [];
+    _clearError();
+    notifyListeners();
+    print('🧹 AutomationProvider: Cleared user data');
   }
 
   /// 🔄 UPDATE DATA SOURCES - Call this when user data changes
@@ -76,13 +142,17 @@ class AutomationProvider with ChangeNotifier {
   // CRUD OPERATIONS
   // ════════════════════════════════════════════════════════
 
-  /// Load all rules from database
+  /// Load all rules from Firestore (1 lần, không real-time)
+  /// Deprecated: Use setCurrentUser để auto-setup real-time listener
+  @Deprecated('Use setCurrentUser instead')
   Future<void> loadRules() async {
+    if (_currentUserId == null) return;
+
     _setLoading(true);
     _clearError();
 
     try {
-      _rules = await _database.getAllRules();
+      _rules = await _firestoreService.loadUserRules(_currentUserId!);
       print('✅ Loaded ${_rules.length} automation rules');
     } catch (e) {
       _setError('Failed to load rules: $e');
@@ -94,6 +164,11 @@ class AutomationProvider with ChangeNotifier {
 
   /// Add a new rule
   Future<bool> addRule(AutomationRule rule) async {
+    if (_currentUserId == null) {
+      _setError('No current user');
+      return false;
+    }
+
     _clearError();
 
     // Validate rule
@@ -104,9 +179,8 @@ class AutomationProvider with ChangeNotifier {
     }
 
     try {
-      await _database.insertRule(rule);
-      _rules.add(rule);
-      notifyListeners();
+      // 🔥 LƯU VÀO FIRESTORE → Real-time listener sẽ tự động update _rules
+      await _firestoreService.addRule(_currentUserId!, rule);
       print('✅ Added rule: ${rule.name}');
       return true;
     } catch (e) {
@@ -118,6 +192,11 @@ class AutomationProvider with ChangeNotifier {
 
   /// Update an existing rule
   Future<bool> updateRule(AutomationRule rule) async {
+    if (_currentUserId == null) {
+      _setError('No current user');
+      return false;
+    }
+
     _clearError();
 
     // Validate rule
@@ -128,13 +207,9 @@ class AutomationProvider with ChangeNotifier {
     }
 
     try {
-      await _database.updateRule(rule);
-      final index = _rules.indexWhere((r) => r.id == rule.id);
-      if (index != -1) {
-        _rules[index] = rule;
-        notifyListeners();
-        print('✅ Updated rule: ${rule.name}');
-      }
+      // 🔥 UPDATE VÀO FIRESTORE → Real-time listener sẽ tự động update _rules
+      await _firestoreService.updateRule(_currentUserId!, rule);
+      print('✅ Updated rule: ${rule.name}');
       return true;
     } catch (e) {
       _setError('Failed to update rule: $e');
@@ -145,17 +220,16 @@ class AutomationProvider with ChangeNotifier {
 
   /// Toggle rule enabled/disabled
   Future<void> toggleRule(String id) async {
+    if (_currentUserId == null) return;
+
     try {
-      final index = _rules.indexWhere((r) => r.id == id);
-      if (index != -1) {
-        final updatedRule = _rules[index].copyWith(
-          enabled: !_rules[index].enabled,
-        );
-        await _database.toggleRule(id, updatedRule.enabled);
-        _rules[index] = updatedRule;
-        notifyListeners();
-        print('✅ Toggled rule: ${updatedRule.name} -> ${updatedRule.enabled}');
-      }
+      final rule = _rules.firstWhere((r) => r.id == id);
+      final newEnabled = !rule.enabled;
+
+      // 🔥 UPDATE VÀO FIRESTORE
+      await _firestoreService.toggleRule(_currentUserId!, id, newEnabled);
+
+      print('✅ Toggled rule: ${rule.name} -> $newEnabled');
     } catch (e) {
       _setError('Failed to toggle rule: $e');
       print('❌ Error toggling rule: $e');
@@ -164,12 +238,16 @@ class AutomationProvider with ChangeNotifier {
 
   /// Delete a rule
   Future<bool> deleteRule(String id) async {
+    if (_currentUserId == null) {
+      _setError('No current user');
+      return false;
+    }
+
     _clearError();
 
     try {
-      await _database.deleteRule(id);
-      _rules.removeWhere((r) => r.id == id);
-      notifyListeners();
+      // 🔥 XÓA KHỎI FIRESTORE → Real-time listener sẽ tự động update _rules
+      await _firestoreService.deleteRule(_currentUserId!, id);
       print('✅ Deleted rule: $id');
       return true;
     } catch (e) {
@@ -181,10 +259,11 @@ class AutomationProvider with ChangeNotifier {
 
   /// Delete all rules
   Future<void> deleteAllRules() async {
+    if (_currentUserId == null) return;
+
     try {
-      await _database.deleteAllRules();
-      _rules.clear();
-      notifyListeners();
+      // 🔥 XÓA TẤT CẢ KHỎI FIRESTORE
+      await _firestoreService.deleteAllRules(_currentUserId!);
       print('✅ Deleted all rules');
     } catch (e) {
       _setError('Failed to delete all rules: $e');
@@ -206,9 +285,11 @@ class AutomationProvider with ChangeNotifier {
     return await _ruleEngine.testRule(rule, sensorData);
   }
 
-  /// Get rule history
+  /// Get rule history (DEPRECATED - không còn database local)
+  @Deprecated('History feature needs to be reimplemented with Firestore')
   Future<List<Map<String, dynamic>>> getRuleHistory(String ruleId) async {
-    return await _database.getRuleHistory(ruleId);
+    // TODO: Implement with Firestore if needed
+    return [];
   }
 
   // ════════════════════════════════════════════════════════
@@ -244,7 +325,7 @@ class AutomationProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    _database.close();
+    _rulesSubscription?.cancel(); // 🔴 Cancel real-time listener
     super.dispose();
   }
 }

@@ -6,7 +6,7 @@
 /// ```
 
 // Data Layer
-export 'data/automation_database.dart';
+// export 'data/automation_database.dart'; // ❌ REMOVED - Using Firestore now
 export 'data/rule_engine_service.dart';
 
 // State Management

@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../models/automation_rule.dart';
-import '../services/local_storage_service.dart';
+import '../services/firestore_automation_service.dart';
 
 class AutomationProvider extends ChangeNotifier {
-  final LocalStorageService _storageService;
+  final FirestoreAutomationService _firestoreService =
+      FirestoreAutomationService();
 
   List<AutomationRule> _rules = [];
   String? _currentUserId; // User isolation
+
+  // 🔴 Real-time listener subscription
+  StreamSubscription<List<AutomationRule>>? _rulesSubscription;
 
   List<AutomationRule> get rules => _rules;
   List<AutomationRule> get activeRules =>
@@ -14,111 +19,122 @@ class AutomationProvider extends ChangeNotifier {
   int get rulesCount => _rules.length;
   int get activeRulesCount => activeRules.length;
 
-  AutomationProvider(this._storageService) {
+  AutomationProvider() {
     // Không load rules ngay, chờ setCurrentUser
   }
 
-  /// Set current user và load automation rules của user đó
+  /// Set current user và setup real-time listener
   Future<void> setCurrentUser(String? userId) async {
     if (_currentUserId == userId) return;
+
+    // 🛑 HỦY LISTENER CŨ
+    _rulesSubscription?.cancel();
+    _rulesSubscription = null;
 
     _currentUserId = userId;
 
     if (userId != null) {
-      _loadRules();
+      await _setupRealtimeListener(userId);
     } else {
       _rules = [];
       notifyListeners();
     }
   }
 
+  /// Setup real-time listener để tự động sync rules từ Firestore
+  Future<void> _setupRealtimeListener(String userId) async {
+    try {
+      debugPrint('👂 Setting up real-time listener for automation rules...');
+
+      // 🔴 LẮng nghe real-time changes từ Firestore
+      _rulesSubscription = _firestoreService
+          .watchUserRules(userId)
+          .listen(
+            (rules) {
+              debugPrint(
+                '📡 Received real-time rules update: ${rules.length} rules',
+              );
+
+              _rules = rules;
+              notifyListeners();
+            },
+            onError: (error) {
+              debugPrint('❌ Error in real-time rules listener: $error');
+            },
+          );
+
+      debugPrint('✅ Real-time rules listener setup complete');
+    } catch (e) {
+      debugPrint('❌ Error setting up real-time rules listener: $e');
+    }
+  }
+
   /// Clear user data when logout
   void clearUserData() {
+    _rulesSubscription?.cancel();
+    _rulesSubscription = null;
+
     _currentUserId = null;
     _rules = [];
     notifyListeners();
     print('🧹 AutomationProvider: Cleared user data');
   }
 
-  void _loadRules() {
-    if (_currentUserId == null) {
-      _rules = [];
-      return;
-    }
-
-    final stored = _storageService.getAutomationRules(userId: _currentUserId);
-    _rules = stored.map((json) => AutomationRule.fromJson(json)).toList();
-    print(
-      '🤖 Loaded ${_rules.length} automation rules for user: $_currentUserId',
-    );
-  }
-
-  void _saveRules() {
+  Future<void> addRule(AutomationRule rule) async {
     if (_currentUserId == null) return;
 
-    final jsonList = _rules.map((rule) => rule.toJson()).toList();
-    _storageService.saveAutomationRules(jsonList, userId: _currentUserId);
-    print(
-      '💾 Saved ${_rules.length} automation rules for user: $_currentUserId',
-    );
-  }
-
-  void addRule(AutomationRule rule) {
-    _rules.add(rule);
-    _saveRules();
-    notifyListeners();
+    // 🔥 LƯU VÀO FIRESTORE → Real-time listener sẽ tự động update _rules
+    await _firestoreService.addRule(_currentUserId!, rule);
     print('✅ Added rule: ${rule.name}');
   }
 
-  void updateRule(String id, AutomationRule updatedRule) {
-    final index = _rules.indexWhere((r) => r.id == id);
-    if (index != -1) {
-      _rules[index] = updatedRule;
-      _saveRules();
-      notifyListeners();
-      print('✏️ Updated rule: ${updatedRule.name}');
-    }
+  Future<void> updateRule(String id, AutomationRule updatedRule) async {
+    if (_currentUserId == null) return;
+
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.updateRule(_currentUserId!, updatedRule);
+    print('✏️ Updated rule: ${updatedRule.name}');
   }
 
-  void deleteRule(String id) {
+  Future<void> deleteRule(String id) async {
+    if (_currentUserId == null) return;
+
     final rule = _rules.firstWhere((r) => r.id == id);
-    _rules.removeWhere((r) => r.id == id);
-    _saveRules();
-    notifyListeners();
+
+    // 🔥 XÓA KHỎI FIRESTORE
+    await _firestoreService.deleteRule(_currentUserId!, id);
     print('🗑️ Deleted rule: ${rule.name}');
   }
 
-  void toggleRule(String id) {
-    final index = _rules.indexWhere((r) => r.id == id);
-    if (index != -1) {
-      final rule = _rules[index];
-      _rules[index] = rule.copyWith(enabled: !rule.enabled);
-      _saveRules();
-      notifyListeners();
-      print('🔄 Toggled rule: ${rule.name} -> ${!rule.enabled}');
-    }
+  Future<void> toggleRule(String id) async {
+    if (_currentUserId == null) return;
+
+    final rule = _rules.firstWhere((r) => r.id == id);
+    final newEnabled = !rule.enabled;
+
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.toggleRule(_currentUserId!, id, newEnabled);
+    print('🔄 Toggled rule: ${rule.name} -> $newEnabled');
   }
 
-  void enableRule(String id) {
-    final index = _rules.indexWhere((r) => r.id == id);
-    if (index != -1) {
-      final rule = _rules[index];
-      _rules[index] = rule.copyWith(enabled: true);
-      _saveRules();
-      notifyListeners();
-      print('✅ Enabled rule: ${rule.name}');
-    }
+  Future<void> enableRule(String id) async {
+    if (_currentUserId == null) return;
+
+    final rule = _rules.firstWhere((r) => r.id == id);
+
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.toggleRule(_currentUserId!, id, true);
+    print('✅ Enabled rule: ${rule.name}');
   }
 
-  void disableRule(String id) {
-    final index = _rules.indexWhere((r) => r.id == id);
-    if (index != -1) {
-      final rule = _rules[index];
-      _rules[index] = rule.copyWith(enabled: false);
-      _saveRules();
-      notifyListeners();
-      print('⏸️ Disabled rule: ${rule.name}');
-    }
+  Future<void> disableRule(String id) async {
+    if (_currentUserId == null) return;
+
+    final rule = _rules.firstWhere((r) => r.id == id);
+
+    // 🔥 UPDATE VÀO FIRESTORE
+    await _firestoreService.toggleRule(_currentUserId!, id, false);
+    print('⏸️ Disabled rule: ${rule.name}');
   }
 
   AutomationRule? getRuleById(String id) {
@@ -129,22 +145,32 @@ class AutomationProvider extends ChangeNotifier {
     }
   }
 
-  void markRuleTriggered(String id) {
-    final index = _rules.indexWhere((r) => r.id == id);
-    if (index != -1) {
-      final rule = _rules[index];
-      _rules[index] = rule.copyWith(lastTriggered: DateTime.now());
-      _saveRules();
-      notifyListeners();
-      print('⚡ Rule triggered: ${rule.name}');
-    }
+  Future<void> markRuleTriggered(String id) async {
+    if (_currentUserId == null) return;
+
+    final rule = _rules.firstWhere((r) => r.id == id);
+
+    // 🔥 UPDATE LAST TRIGGERED TIME VÀO FIRESTORE
+    await _firestoreService.updateLastTriggered(
+      _currentUserId!,
+      id,
+      DateTime.now(),
+    );
+    print('⚡ Rule triggered: ${rule.name}');
   }
 
-  void clearAllRules() {
-    _rules.clear();
-    _saveRules();
-    notifyListeners();
+  Future<void> clearAllRules() async {
+    if (_currentUserId == null) return;
+
+    // 🔥 XÓA TẤT CẢ KHỎI FIRESTORE
+    await _firestoreService.deleteAllRules(_currentUserId!);
     print('🗑️ Cleared all automation rules');
+  }
+
+  @override
+  void dispose() {
+    _rulesSubscription?.cancel(); // 🔴 Cancel real-time listener
+    super.dispose();
   }
 
   bool _isWithinTimeRange(AutomationRule rule) {
