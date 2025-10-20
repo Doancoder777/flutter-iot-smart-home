@@ -34,9 +34,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
     // Listen for auth provider changes
     final authProvider = Provider.of<AuthProvider>(context);
 
+    print(
+      '🔧 AuthWrapper.didChangeDependencies: isLoggedIn=${authProvider.isLoggedIn}, _lastInitializedUserId=$_lastInitializedUserId',
+    );
+
     if (authProvider.isLoggedIn) {
       final userId = authProvider.currentUser?.id ?? 'default_user';
+      print('🔧 AuthWrapper.didChangeDependencies: current userId=$userId');
       if (_lastInitializedUserId != userId) {
+        print(
+          '🔧 AuthWrapper.didChangeDependencies: userId changed, scheduling initialization...',
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _initializeDevicesIfNeeded(authProvider);
         });
@@ -44,6 +52,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
     } else {
       // 🔓 USER LOGGED OUT - CLEAR ALL DATA
       if (_lastInitializedUserId != null) {
+        print(
+          '🔧 AuthWrapper.didChangeDependencies: User logged out, scheduling data clear...',
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _clearAllUserData();
         });
@@ -161,9 +172,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
       sensorProvider.clearUserData();
       automationProvider.clearUserData();
 
-      // Reset initialization state
-      _lastInitializedUserId = null;
-      _isInitialized = false;
+      // Reset initialization state with setState to rebuild UI
+      if (mounted) {
+        setState(() {
+          _lastInitializedUserId = null;
+          _isInitialized = true; // Keep initialized=true so LoginScreen shows
+        });
+      }
 
       print('✅ AuthWrapper: All user data cleared');
     } catch (e) {

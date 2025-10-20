@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/user_model.dart';
@@ -27,77 +28,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _initialize() async {
     print('🔧 Initializing AuthProvider...');
 
-    // First initialize Google Sign-In
-    await _initializeGoogleSignIn();
-
     // Load existing valid Google user from storage (if any)
     await _loadUserFromStorage();
 
     print('🎯 AuthProvider initialization complete');
-  }
-
-  /// Initialize Google Sign-In
-  Future<void> _initializeGoogleSignIn() async {
-    try {
-      print('🔧 Initializing Google Sign-In...');
-
-      // Initialize with serverClientId for Android
-      await GoogleSignIn.instance.initialize(
-        serverClientId:
-            '1024906096119-3p12ic691fcpijbcd3s11desus8ajvue.apps.googleusercontent.com',
-      );
-
-      // Listen to authentication events for manual sign-ins
-      GoogleSignIn.instance.authenticationEvents
-          .listen((event) {
-            _handleAuthenticationEvent(event);
-          })
-          .onError((error) {
-            print('❌ Authentication error: $error');
-            _setError('Lỗi xác thực: $error');
-          });
-
-      // DON'T attempt automatic authentication - let user manually sign in
-      print('✅ Google Sign-In initialized successfully');
-    } catch (e) {
-      print('❌ Failed to initialize Google Sign-In: $e');
-      print('⚠️ Google Sign-In not configured, will show login screen');
-    }
-  }
-
-  /// Handle Google Sign-In authentication events
-  Future<void> _handleAuthenticationEvent(
-    GoogleSignInAuthenticationEvent event,
-  ) async {
-    GoogleSignInAccount? user = switch (event) {
-      GoogleSignInAuthenticationEventSignIn() => event.user,
-      GoogleSignInAuthenticationEventSignOut() => null,
-    };
-
-    if (user != null) {
-      // Create User object from Google account
-      final newUser = User(
-        id: user.id,
-        username: user.email.split('@')[0],
-        email: user.email,
-        displayName: user.displayName ?? 'Unknown User',
-        createdAt: DateTime.now(),
-        lastLoginAt: DateTime.now(),
-        avatarUrl: user.photoUrl,
-      );
-
-      _currentUser = newUser;
-      await _saveUserToStorage(newUser);
-      print('✅ User signed in: ${newUser.displayName}');
-    } else {
-      _currentUser = null;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('current_user');
-      print('✅ User signed out');
-    }
-
-    _setLoading(false);
-    notifyListeners();
   }
 
   /// Load user data from SharedPreferences
@@ -149,83 +83,88 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Sign in with Google - FORCE FRESH LOGIN WITHOUT CACHED ACCOUNTS
+  /// Sign in with Google using Firebase Auth
   Future<bool> signInWithGoogle() async {
     _setLoading(true);
     _clearError();
 
     try {
-      print('🔐 Starting Google Sign-In...');
+      print('🔐 Bắt đầu đăng nhập Google...');
 
-      // FORCE COMPLETE DISCONNECT to clear all cached accounts
-      print('🔄 Clearing all cached Google accounts...');
-      try {
-        await GoogleSignIn.instance.signOut();
-        await GoogleSignIn.instance.disconnect();
-      } catch (e) {
-        print('⚠️ No existing accounts to clear: $e');
-      }
+      final GoogleSignIn googleSignIn = GoogleSignIn();
 
-      print('🎯 Starting fresh Google Sign-In without cached accounts...');
+      // Xóa cache để user có thể chọn tài khoản
+      await googleSignIn.signOut();
 
-      // Use authenticate() but force fresh authentication
-      final GoogleSignInAccount? googleUser = await GoogleSignIn.instance
-          .authenticate();
+      // Hiển thị màn hình chọn tài khoản Google
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
-      if (googleUser != null) {
-        print('✅ Google Sign-In successful: ${googleUser.email}');
-
-        // Create user object from Google account
-        final user = User(
-          id: googleUser.id,
-          username: googleUser.email.split('@')[0],
-          email: googleUser.email,
-          displayName: googleUser.displayName ?? googleUser.email,
-          createdAt: DateTime.now(),
-          lastLoginAt: DateTime.now(),
-          avatarUrl: googleUser.photoUrl,
-        );
-
-        // Save to storage and update state
-        await _saveUserToStorage(user);
-        _currentUser = user;
-
-        _setLoading(false);
-        notifyListeners();
-
-        print('✅ Google Sign-In successful: ${user.displayName}');
-        return true;
-      } else {
-        print('❌ Google Sign-In cancelled by user');
+      if (googleUser == null) {
+        print('❌ Người dùng hủy đăng nhập');
         _setError('Đăng nhập bị hủy. Vui lòng thử lại.');
         _setLoading(false);
         return false;
       }
-    } catch (e) {
-      print('❌ Real Google Sign-In failed: $e');
 
-      // Fallback to mock Google user for now
-      print('⚠️ Using mock Google Sign-In as fallback');
+      print('✅ Đã chọn tài khoản: ${googleUser.email}');
 
-      final user = User(
-        id: 'google_user_${DateTime.now().millisecondsSinceEpoch}',
-        username: 'google_user',
-        email: 'user@gmail.com',
-        displayName: 'Google User (Mock)',
-        createdAt: DateTime.now(),
-        lastLoginAt: DateTime.now(),
-        avatarUrl: null,
+      // Lấy authentication tokens
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Tạo credential cho Firebase
+      final credential = firebase_auth.GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
       );
 
-      // Save to storage and update state
+      // Đăng nhập vào Firebase
+      final firebase_auth.UserCredential userCredential = await firebase_auth
+          .FirebaseAuth
+          .instance
+          .signInWithCredential(credential);
+
+      print('✅ Đăng nhập Firebase thành công');
+
+      // 5. Get Firebase user
+      final firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        print('❌ Firebase user is null');
+        _setError('Đăng nhập thất bại. Vui lòng thử lại.');
+        _setLoading(false);
+        return false;
+      }
+
+      print('👤 Firebase User: ${firebaseUser.email}');
+
+      // 6. Create our User object from Firebase user
+      final user = User(
+        id: firebaseUser.uid, // ✅ Use Firebase UID instead of Google ID
+        username: firebaseUser.email?.split('@')[0] ?? 'user',
+        email: firebaseUser.email ?? '',
+        displayName: firebaseUser.displayName ?? firebaseUser.email ?? 'User',
+        createdAt: DateTime.now(),
+        lastLoginAt: DateTime.now(),
+        avatarUrl: firebaseUser.photoURL,
+      );
+
+      // 7. Save to local storage and update state
       await _saveUserToStorage(user);
       _currentUser = user;
 
       _setLoading(false);
       notifyListeners();
 
-      print('✅ Mock Google Sign-In successful: ${user.displayName}');
+      print('✅ Google Sign-In thành công!');
+      print('   Email: ${user.email}');
+      print('   Name: ${user.displayName}');
+      print('   UID: ${user.id}');
       return true;
+    } catch (e) {
+      print('❌ Lỗi đăng nhập Google: $e');
+      _setError('Đăng nhập thất bại: $e');
+      _setLoading(false);
+      return false;
     }
   }
 
@@ -236,8 +175,13 @@ class AuthProvider extends ChangeNotifier {
     try {
       print('🔓 Signing out...');
 
+      // Sign out from Firebase Auth
+      await firebase_auth.FirebaseAuth.instance.signOut();
+      print('✅ Signed out from Firebase Auth');
+
       // Sign out from Google
-      await GoogleSignIn.instance.signOut();
+      await GoogleSignIn().signOut();
+      print('✅ Đã đăng xuất Google');
 
       // Clear local storage
       final prefs = await SharedPreferences.getInstance();
@@ -264,7 +208,7 @@ class AuthProvider extends ChangeNotifier {
       print('🔌 Disconnecting Google account...');
 
       // Disconnect from Google (revokes all permissions)
-      await GoogleSignIn.instance.disconnect();
+      await GoogleSignIn().disconnect();
 
       // Clear local storage
       final prefs = await SharedPreferences.getInstance();
@@ -331,8 +275,8 @@ class AuthProvider extends ChangeNotifier {
       print('🗑️ Clearing all user data...');
 
       // Clear from Google Sign-In
-      await GoogleSignIn.instance.signOut();
-      await GoogleSignIn.instance.disconnect();
+      await GoogleSignIn().signOut();
+      await GoogleSignIn().disconnect();
 
       // Clear from local storage
       final prefs = await SharedPreferences.getInstance();

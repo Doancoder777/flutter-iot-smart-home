@@ -13,6 +13,7 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  bool _isSigningIn = false; // Track sign-in state locally
 
   @override
   void initState() {
@@ -188,7 +189,9 @@ class _LoginScreenState extends State<LoginScreen>
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: authProvider.isLoading ? null : _signInWithGoogle,
+            onPressed: (authProvider.isLoading || _isSigningIn)
+                ? null
+                : _signInWithGoogle,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: Colors.black87,
@@ -344,6 +347,12 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _signInWithGoogle() async {
+    if (_isSigningIn) return; // Prevent multiple calls
+
+    setState(() {
+      _isSigningIn = true;
+    });
+
     final authProvider = context.read<AuthProvider>();
 
     print('🔐 LoginScreen: Starting Google Sign-In...');
@@ -351,10 +360,28 @@ class _LoginScreenState extends State<LoginScreen>
     print('🔐 LoginScreen: Google Sign-In result: $success');
 
     if (success && mounted) {
-      print('✅ LoginScreen: Navigation to home screen');
-      // Navigate to home screen
-      Navigator.of(context).pushReplacementNamed('/home');
+      print(
+        '✅ LoginScreen: Sign-in successful, AuthWrapper will handle navigation',
+      );
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Đăng nhập thành công! Đang chuyển hướng...'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      // Keep _isSigningIn = true to prevent button from being re-enabled
+      // AuthWrapper will automatically navigate to HomeScreen when it detects isLoggedIn = true
     } else {
+      // Failed - re-enable button
+      if (mounted) {
+        setState(() {
+          _isSigningIn = false;
+        });
+      }
+
       print('❌ LoginScreen: Google Sign-In failed or cancelled');
       if (authProvider.errorMessage != null && mounted) {
         print('❌ LoginScreen: Error message: ${authProvider.errorMessage}');

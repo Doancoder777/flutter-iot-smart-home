@@ -63,7 +63,7 @@ dependencies:
   dio: ^5.5.0+1
   
   # Authentication & Firestore
-  google_sign_in: ^7.2.0
+  google_sign_in: ^6.1.0
   firebase_auth: ^6.1.0
   firebase_core: ^4.1.1
   cloud_firestore: ^6.0.3
