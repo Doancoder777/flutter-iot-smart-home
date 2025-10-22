@@ -13,6 +13,8 @@ import 'providers/auth_provider.dart';
 import 'services/mqtt_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/notification_service.dart';
+import 'services/ai_voice_service.dart';
+import 'controllers/voice_controller.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/devices/devices_screen.dart';
@@ -75,6 +77,23 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SettingsProvider(storageService)),
         ChangeNotifierProvider(create: (_) => AutomationProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider(storageService)),
+
+        // 🤖 AI Voice Control Provider
+        ChangeNotifierProxyProvider<DeviceProvider, VoiceController>(
+          create: (context) {
+            final deviceProvider = context.read<DeviceProvider>();
+            final controller = VoiceController(
+              aiService: AiVoiceService(),
+              deviceProvider: deviceProvider,
+            );
+            // Initialize sau khi build xong
+            Future.microtask(() => controller.initialize());
+            return controller;
+          },
+          update: (_, deviceProvider, voiceController) {
+            return voiceController!;
+          },
+        ),
       ],
       child: MyApp(),
     ),

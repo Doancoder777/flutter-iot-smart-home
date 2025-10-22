@@ -6,6 +6,8 @@ import '../../providers/device_provider.dart';
 import '../../config/app_colors.dart';
 import '../../models/device_model.dart';
 import '../../widgets/connection_status_badge.dart';
+import '../../widgets/voice_control_button.dart';
+import '../../controllers/voice_controller.dart';
 import 'widgets/animated_sensor_card.dart';
 import 'widgets/device_quick_control.dart';
 import 'widgets/alert_banner.dart';
@@ -61,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
 
       body: _buildBody(),
+
+      // 🎤 VOICE CONTROL FLOATING BUTTON
+      floatingActionButton: VoiceControlButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
@@ -745,6 +751,35 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             SizedBox(height: 12),
+            // ⚙️ Servo Slider
+            Row(
+              children: [
+                Text('0°', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Expanded(
+                  child: Slider(
+                    value: (device.value ?? 0).toDouble().clamp(
+                      0,
+                      device.isServo360 == true ? 360 : 180,
+                    ),
+                    min: 0,
+                    max: device.isServo360 == true ? 360 : 180,
+                    divisions: device.isServo360 == true ? 36 : 18,
+                    label: '${device.value ?? 0}°',
+                    onChanged: (value) => deviceProvider.updateServoValue(
+                      device.id,
+                      value.toInt(),
+                    ),
+                    activeColor: AppColors.pumpColor,
+                  ),
+                ),
+                Text(
+                  '${device.isServo360 == true ? "360" : "180"}°',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            // ⚙️ Preset Buttons
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -820,6 +855,32 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             SizedBox(height: 12),
+            // 🌪️ Fan Speed Slider
+            Row(
+              children: [
+                Text('Tắt', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Expanded(
+                  child: Slider(
+                    value: (device.value ?? 0).toDouble().clamp(0, 100),
+                    min: 0,
+                    max: 100,
+                    divisions: 100,
+                    label: '${device.value ?? 0}%',
+                    onChanged: (value) => deviceProvider.updateServoValue(
+                      device.id,
+                      value.toInt(),
+                    ),
+                    activeColor: Colors.cyan[400],
+                  ),
+                ),
+                Text(
+                  'Mạnh',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            // 🌪️ Preset Buttons
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(

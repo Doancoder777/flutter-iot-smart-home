@@ -70,6 +70,11 @@ dependencies:
   connectivity_plus: ^7.0.0
   permission_handler: ^12.0.1
   
+  # 🤖 AI Voice Control
+  google_generative_ai: ^0.4.7 # Gemini AI
+  speech_to_text: ^7.3.0        # Voice Recognition
+  flutter_tts: ^4.2.3          # Text-to-Speech (optional)
+  
   # Animations
   rive: ^0.13.7
   flutter_animation_progress_bar: ^2.3.1

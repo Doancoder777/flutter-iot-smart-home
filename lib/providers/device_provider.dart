@@ -379,6 +379,7 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
+  /// Cập nhật giá trị cho Servo (góc) hoặc Fan (tốc độ %)
   void updateServoValue(String id, int value) async {
     if (_currentUserId == null) return;
 
@@ -395,8 +396,10 @@ class DeviceProvider extends ChangeNotifier {
 
       // Quạt gửi JSON với tốc độ
       if (device.type == DeviceType.fan) {
+        // Convert % (0-100) sang PWM (0-255) cho ESP32
+        int pwmValue = ((value / 100) * 255).round();
         message =
-            '{"name": "${device.keyName}", "command": "set_speed", "speed": $value}';
+            '{"name": "${device.keyName}", "command": "set_speed", "speed": $pwmValue}';
       } else {
         // Servo thông thường gửi JSON với góc
         message =
@@ -415,14 +418,14 @@ class DeviceProvider extends ChangeNotifier {
         print('❌ FAILED: No MQTT config for device ${device.name}');
       }
 
-      // 🔥 UPDATE VÀO FIRESTORE
+      // 🔥 UPDATE VÀO FIRESTORE (lưu % cho fan, góc cho servo)
       await _firestoreService.updateDeviceFields(_currentUserId!, id, {
         'value': value,
       });
 
-      if (id == 'fan_living') {
-        int percentage = ((value / 255) * 100).round();
-        print('🔄 Fan ${device.name}: $percentage% (PWM: $value)');
+      if (device.type == DeviceType.fan) {
+        int pwmValue = ((value / 100) * 255).round();
+        print('🔄 Fan ${device.name}: $value% (PWM: $pwmValue)');
       } else {
         print('🔄 Servo ${device.name}: $value°');
       }

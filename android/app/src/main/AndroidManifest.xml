@@ -10,6 +10,10 @@
     <!-- Quyền rung -->
     <uses-permission android:name="android.permission.VIBRATE" />
     
+    <!-- 🎤 Quyền Microphone cho Voice Control -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MICROPHONE"/>
+    
     <application
         android:label="Smart Home IoT"
         android:name="${applicationName}"   
