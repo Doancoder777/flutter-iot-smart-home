@@ -31,14 +31,12 @@ class _AutomationInitializerState extends State<AutomationInitializer> {
       _automationService = AutomationService(
         automationProvider: automationProvider,
         deviceProvider: deviceProvider,
+        sensorProvider: sensorProvider, // ✅ Truyền SensorProvider
       );
 
       _automationService!.initialize();
-
-      // Lắng nghe thay đổi sensor data
-      sensorProvider.addListener(() {
-        _automationService?.updateSensorData(sensorProvider.currentData);
-      });
+      
+      print('✅ AutomationInitializer: Service initialized with real sensor data');
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../models/sensor_data.dart';
 import '../models/user_sensor.dart';
 import '../models/sensor_type.dart';
@@ -8,12 +9,15 @@ import '../models/device_mqtt_config.dart';
 import '../services/local_storage_service.dart';
 import '../services/firestore_sensor_service.dart';
 import '../services/notification_service.dart';
+import '../services/sensor_mqtt_service.dart'; // Service riêng cho sensor ping
 import '../config/constants.dart';
 
 class SensorProvider extends ChangeNotifier {
   final LocalStorageService _storageService; // Giữ lại cho history (in-memory)
   final NotificationService _notificationService;
   final FirestoreSensorService _firestoreService = FirestoreSensorService();
+  final SensorMqttService _sensorMqttService =
+      SensorMqttService(); // Service riêng cho sensor, TỰ ĐỘNG CONNECT
 
   SensorData _currentData = SensorData.empty();
   List<SensorData> _history = [];
@@ -75,19 +79,40 @@ class SensorProvider extends ChangeNotifier {
           .watchUserSensors(userId)
           .listen(
             (sensors) {
-              debugPrint(
-                '📡 Received real-time sensor update: ${sensors.length} sensors',
+              print(
+                '╔═══════════════════════════════════════════════════════╗',
               );
+              print(
+                '║  📡 FIRESTORE REAL-TIME UPDATE RECEIVED!              ║',
+              );
+              print(
+                '╚═══════════════════════════════════════════════════════╝',
+              );
+              print('👤 UserId: $userId');
+              print('📊 Total sensors: ${sensors.length}');
+              print('───────────────────────────────────────────────────────');
 
               _userSensors = sensors;
-              _safeNotify();
 
-              // Debug: List loaded sensors
+              // 🔴 SUBSCRIBE TO ALL SENSOR STATE TOPICS (để nhận data từ Arduino)
+              _subscribeToSensorTopics();
+
+              // Debug: List loaded sensors với giá trị hiện tại
               for (final sensor in _userSensors) {
+                print('🔹 ${sensor.displayName}');
+                print('   Code: ${sensor.deviceCode}');
+                print('   Type: ${sensor.sensorTypeId}');
+                print('   Topic: ${sensor.mqttTopic}');
                 print(
-                  '🐞 DEBUG: Loaded sensor: ${sensor.displayName} (${sensor.deviceCode})',
+                  '   Value: ${sensor.lastValue ?? 'null'} → Formatted: ${sensor.formattedValue}',
                 );
+                print('   Active: ${sensor.isActive}');
               }
+              print('───────────────────────────────────────────────────────');
+
+              print('🔔 [SENSOR] Calling notifyListeners() to update UI...');
+              _safeNotify();
+              print('✅ [SENSOR] UI should update now!\n');
             },
             onError: (error) {
               debugPrint('❌ Error in real-time sensor listener: $error');
@@ -98,6 +123,45 @@ class SensorProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Error setting up real-time sensor listener: $e');
     }
+  }
+
+  /// Subscribe to all active sensor state topics để nhận data
+  void _subscribeToSensorTopics() {
+    if (_userSensors.isEmpty) {
+      print('📭 No sensors to subscribe');
+      return;
+    }
+
+    print('╔═══════════════════════════════════════════════════════╗');
+    print('║  📡 SUBSCRIBING TO SENSOR DATA TOPICS...              ║');
+    print('╚═══════════════════════════════════════════════════════╝');
+
+    for (final sensor in _userSensors) {
+      if (!sensor.isActive) continue;
+
+      // Subscribe đến state topic để nhận data từ Arduino
+      final stateTopic = sensor.mqttTopic; // smart_home/sensors/DHT22_001/state
+
+      print('🔔 Subscribing to: $stateTopic');
+      print('   Sensor: ${sensor.displayName} (${sensor.deviceCode})');
+
+      // Dùng SensorMqttService để subscribe (mỗi sensor tự kết nối broker riêng)
+      _sensorMqttService.subscribeToCustomTopic(sensor, stateTopic);
+
+      // Setup callback để nhận message
+      _sensorMqttService.setSensorCallback(
+        sensor.id,
+        onMessage: (message) {
+          print('📨 [SENSOR DATA] ${sensor.displayName}: $message');
+          // Forward to handleMqttMessage để parse
+          handleMqttMessage(stateTopic, message);
+        },
+      );
+    }
+
+    print(
+      '✅ Subscribed to ${_userSensors.where((s) => s.isActive).length} sensor topics\n',
+    );
   }
 
   /// Kiểm tra user có đủ sensors để hiển thị weather widget
@@ -127,43 +191,173 @@ class SensorProvider extends ChangeNotifier {
 
   /// Xử lý MQTT message đến từ topic động
   Future<void> handleMqttMessage(String topic, String message) async {
-    if (_currentUserId == null) return;
+    print('═══════════════════════════════════════════════════════');
+    print('🔔 [SENSOR] NEW MQTT MESSAGE RECEIVED!');
+    print('📨 Topic:   $topic');
+    print('📦 Message: $message');
+    print('👤 UserId:  $_currentUserId');
+    print('📊 Total sensors loaded: ${_userSensors.length}');
+    print('═══════════════════════════════════════════════════════');
+
+    if (_currentUserId == null) {
+      print('❌ [SENSOR] UserId is NULL! Cannot process message.');
+      return;
+    }
 
     try {
-      // Tìm sensor theo MQTT topic
-      final sensor = _userSensors.firstWhere(
-        (s) => s.mqttTopic == topic && s.isActive,
-        orElse: () => throw StateError('No sensor found'),
+      // Tìm sensor theo device code (extract từ topic)
+      // Topic format: smart_home/sensors/{DEVICE_CODE}/state
+      UserSensor? sensor;
+
+      // Thử tìm theo exact topic trước (backward compatibility)
+      try {
+        sensor = _userSensors.firstWhere(
+          (s) => s.mqttTopic == topic && s.isActive,
+        );
+        print('✅ Found sensor by exact topic: ${sensor.displayName}');
+      } catch (_) {
+        // Nếu không tìm thấy, thử extract device code và tìm theo đó
+        // Topic có thể là: smart_home/sensors/DHT22_001/state
+        // MQTT topic lưu là: smart_home/sensors/DHT22_001/state
+        final topicParts = topic.split('/');
+        if (topicParts.length >= 4 &&
+            topicParts[0] == 'smart_home' &&
+            (topicParts[1] == 'sensors' || topicParts[1] == 'devices')) {
+          final deviceCode = topicParts[2]; // DHT22_001
+
+          print('🔍 [SENSOR] Searching sensor by device code: $deviceCode');
+          print('📋 [SENSOR] Available sensors:');
+          for (var s in _userSensors) {
+            print(
+              '   - ${s.displayName}: code="${s.deviceCode}", active=${s.isActive}, type=${s.sensorTypeId}',
+            );
+          }
+
+          // Tìm sensor có deviceCode khớp
+          try {
+            sensor = _userSensors.firstWhere(
+              (s) => s.deviceCode == deviceCode && s.isActive,
+            );
+            print('✅ [SENSOR] FOUND! Sensor: ${sensor.displayName}');
+            print('   → Device code: ${sensor.deviceCode}');
+            print('   → Type: ${sensor.sensorTypeId}');
+            print('   → MQTT Topic: ${sensor.mqttTopic}');
+          } catch (_) {
+            print('❌ [SENSOR] NO SENSOR FOUND with device code: $deviceCode');
+            print('💡 [SENSOR] Make sure sensor exists with exact deviceCode!');
+            throw StateError('No sensor found for topic: $topic');
+          }
+        } else {
+          print('❌ Invalid topic format: $topic');
+          throw StateError('Invalid topic format');
+        }
+      }
+
+      // Parse value - hỗ trợ cả JSON và plain text
+      dynamic value;
+
+      print('🔧 [SENSOR] Parsing message...');
+
+      // 🛡️ Strip any "Message: " prefix (from HiveMQ Web Client formatting)
+      if (message.startsWith('Message: ')) {
+        message = message.substring('Message: '.length);
+        print('🔧 [SENSOR] Stripped "Message: " prefix, cleaned: $message');
+      }
+
+      print(
+        '   Message type: ${message.trim().startsWith('{') ? 'JSON' : 'Plain text'}',
       );
 
-      // Parse value theo data type
-      dynamic value;
+      // Kiểm tra nếu message là JSON
+      if (message.trim().startsWith('{')) {
+        print('📝 [SENSOR] Parsing as JSON...');
+        try {
+          final Map<String, dynamic> json = jsonDecode(message);
+          print('✅ [SENSOR] JSON parsed successfully: $json');
+
+          // Lấy value từ JSON (Arduino gửi {"type":"soil_moisture","value":0,...})
+          if (json.containsKey('value')) {
+            value = json['value'];
+            print(
+              '📊 [SENSOR] Extracted value from JSON: $value (${value.runtimeType})',
+            );
+          } else {
+            print('❌ [SENSOR] JSON missing "value" key! Keys: ${json.keys}');
+            throw Exception('JSON không chứa key "value"');
+          }
+        } catch (jsonError) {
+          print('❌ [SENSOR] JSON parse error: $jsonError');
+          throw jsonError;
+        }
+      } else {
+        // Plain text message
+        switch (sensor.sensorType!.dataType) {
+          case SensorDataType.double:
+            value = double.parse(message);
+            break;
+          case SensorDataType.int:
+            value = int.parse(message);
+            break;
+          case SensorDataType.bool:
+            value = message == '1' || message.toLowerCase() == 'true';
+            break;
+        }
+        print('📊 Parsed plain text value: $value');
+      }
+
+      // Chuyển đổi kiểu dữ liệu nếu cần
+      print('🔄 [SENSOR] Converting to ${sensor.sensorType!.dataType}...');
       switch (sensor.sensorType!.dataType) {
         case SensorDataType.double:
-          value = double.parse(message);
+          value = (value as num).toDouble();
           break;
         case SensorDataType.int:
-          value = int.parse(message);
+          value = (value as num).toInt();
           break;
         case SensorDataType.bool:
-          value = message == '1' || message.toLowerCase() == 'true';
+          value = value == true || value == 1 || value == '1';
           break;
       }
 
+      print('✅ [SENSOR] Final converted value: $value (${value.runtimeType})');
+      print('───────────────────────────────────────────────────────');
+
       // 🔥 CẬP NHẬT SENSOR VALUE VÀO FIRESTORE
+      print('💾 [SENSOR] Updating Firestore...');
+      print('   UserId: $_currentUserId');
+      print('   SensorId: ${sensor.id}');
+      print('   New value: $value');
+
       await _firestoreService.updateSensorValue(
         _currentUserId!,
         sensor.id,
         value,
       );
 
+      print('✅ [SENSOR] Firestore updated successfully!');
+
       // Real-time listener sẽ tự động update _userSensors
       // Nhưng để đảm bảo UI update ngay, ta cập nhật currentData
+      print('🔄 [SENSOR] Updating currentData from sensors...');
       _updateCurrentDataFromSensors();
 
-      print('📊 Updated sensor: ${sensor.displayName} = $value');
-    } catch (e) {
-      print('⚠️ No sensor found for topic: $topic (message: $message)');
+      print('═══════════════════════════════════════════════════════');
+      print(
+        '🎉 [SENSOR] SUCCESS! Updated sensor: ${sensor.displayName} = $value',
+      );
+      print(
+        '⏰ [SENSOR] Waiting for Firestore listener to trigger UI update...',
+      );
+      print('═══════════════════════════════════════════════════════\n');
+    } catch (e, stackTrace) {
+      print('═══════════════════════════════════════════════════════');
+      print('❌ [SENSOR] ERROR in handleMqttMessage!');
+      print('📨 Topic:   $topic');
+      print('📦 Message: $message');
+      print('⚠️  Error:   $e');
+      print('📚 Stack trace:');
+      print(stackTrace);
+      print('═══════════════════════════════════════════════════════\n');
     }
   }
 
@@ -609,9 +803,98 @@ class SensorProvider extends ChangeNotifier {
     }
   }
 
+  // 🔍 CHECK SENSOR MQTT CONNECTION (tương tự devices)
+  bool _isCheckingConnection = false;
+  String? _connectionCheckSensorId;
+  Timer? _connectionCheckTimer;
+
+  bool get isCheckingConnection => _isCheckingConnection;
+  String? get connectionCheckSensorId => _connectionCheckSensorId;
+
+  Future<bool> checkSensorConnection(UserSensor sensor) async {
+    // Ngăn gọi nhiều lần cùng lúc
+    if (_isCheckingConnection) {
+      print('⚠️ Sensor connection check already in progress');
+      return false;
+    }
+
+    _isCheckingConnection = true;
+    _connectionCheckSensorId = sensor.id;
+    notifyListeners();
+
+    final completer = Completer<bool>();
+
+    try {
+      // Topic ping cho SENSORS: smart_home/sensors/{CODE}/ping
+      final pingTopic = 'smart_home/sensors/${sensor.deviceCode}/ping';
+      final pingPayload = 'ping';
+
+      print('🔍 Starting connection check for sensor: ${sensor.displayName}');
+      print('🔍 Ping topic: $pingTopic');
+
+      // Subscribe đến ping topic trước (dùng SensorMqttService)
+      await _sensorMqttService.subscribeToCustomTopic(sensor, pingTopic);
+
+      // Timeout sau 5 giây
+      _connectionCheckTimer = Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          print(
+            '⏱️ Connection check timeout for sensor: ${sensor.displayName}',
+          );
+          _isCheckingConnection = false;
+          _connectionCheckSensorId = null;
+          _sensorMqttService.removeSensorCallback(sensor.id);
+          notifyListeners();
+          completer.complete(false);
+        }
+      });
+
+      // Lắng nghe MQTT messages - CHỈ GỌI 1 LẦN
+      _sensorMqttService.setSensorCallback(
+        sensor.id,
+        onMessage: (message) {
+          if (message == '1' && !completer.isCompleted) {
+            print(
+              '✅ MQTT connection check successful for sensor: ${sensor.displayName}',
+            );
+            _isCheckingConnection = false;
+            _connectionCheckSensorId = null;
+            _connectionCheckTimer?.cancel();
+            _sensorMqttService.removeSensorCallback(sensor.id);
+            notifyListeners();
+            completer.complete(true);
+          }
+        },
+      );
+
+      // Gửi lệnh ping CHỈ 1 LẦN
+      print('📤 Sending ping to: $pingTopic');
+      await _sensorMqttService.publishToCustomTopic(
+        sensor,
+        pingTopic,
+        pingPayload,
+      );
+      print('✅ Ping sent successfully');
+
+      // Đợi kết quả (timeout hoặc nhận response)
+      final result = await completer.future;
+      return result;
+    } catch (e) {
+      print('❌ Error checking sensor connection: $e');
+      _isCheckingConnection = false;
+      _connectionCheckSensorId = null;
+      _connectionCheckTimer?.cancel();
+      _sensorMqttService.removeSensorCallback(sensor.id);
+      notifyListeners();
+      return false;
+    }
+  }
+
   @override
   void dispose() {
+    _connectionCheckTimer?.cancel();
     _sensorsSubscription?.cancel(); // 🔴 Cancel real-time listener
+    _sensorMqttService.dispose(); // Cleanup sensor MQTT connections
     super.dispose();
   }
 }

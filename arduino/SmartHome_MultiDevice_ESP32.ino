@@ -21,6 +21,7 @@
  * ============================================================================
  
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
@@ -29,13 +30,18 @@
 // ============================================================================
 // WIFI & MQTT CONFIG
 // ============================================================================
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+// 📶 WiFi - Chọn 1 trong 3 mạng (uncomment dòng cần dùng)
+const char* ssid = "Virus_plus";        // Lựa chọn 1
+const char* password = "tan16108";
+// const char* ssid = "Sigma";          // Lựa chọn 2
+// const char* password = "tan16108";
+// const char* ssid = "VIETTEL NgocThoai";  // Lựa chọn 3
+// const char* password = "0934918347";
 
 const char* mqtt_server = "16257efaa31f4843a11e19f83c34e594.s1.eu.hivemq.cloud";
 const int mqtt_port = 8883;
-const char* mqtt_user = "zedho";
-const char* mqtt_pass = "Hokage2004";
+const char* mqtt_user = "sigma";
+const char* mqtt_pass = "35386";
 
 // Device ID (UNIQUE cho mỗi ESP32)
 const char* DEVICE_ID = "ESP32_001";
@@ -44,23 +50,23 @@ WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 // ============================================================================
-// PIN DEFINITIONS
+// PIN DEFINITIONS (✅ OPTIMIZED - TRÁNH ADC2 KHI DÙNG WiFi)
 // ============================================================================
-// Cảm biến
-#define DHT_PIN         4    // GPIO4  - DHT22
-#define GAS_SENSOR_PIN  34   // GPIO34 - MQ-2 (ADC)
-#define RAIN_SENSOR_PIN 35   // GPIO35 - Rain sensor (ADC)
-#define SOIL_SENSOR_PIN 32   // GPIO32 - Soil moisture (ADC)
-#define DUST_LED_PIN    25   // GPIO25 - GP2Y1010AU0F LED
-#define DUST_SENSOR_PIN 33   // GPIO33 - GP2Y1010AU0F Output (ADC)
-#define PIR_SENSOR_PIN  27   // GPIO27 - PIR Motion Sensor
+// Cảm biến (SỬ DỤNG ADC1 CHO CẢM BIẾN ANALOG)
+#define DHT_PIN         4    // GPIO4  - DHT22 (Digital)
+#define GAS_SENSOR_PIN  34   // GPIO34 - MQ-2 (ADC1_6) ✅ INPUT ONLY
+#define RAIN_SENSOR_PIN 35   // GPIO35 - Rain sensor (ADC1_7) ✅ INPUT ONLY
+#define SOIL_SENSOR_PIN 32   // GPIO32 - Soil moisture (ADC1_4) ✅ OK
+#define DUST_LED_PIN    23   // GPIO23 - GP2Y1010AU0F LED (ĐỔI TỪ 25 → 23) ✅
+#define DUST_SENSOR_PIN 33   // GPIO33 - GP2Y1010AU0F Output (ADC1_5) ✅ OK
+#define PIR_SENSOR_PIN  27   // GPIO27 - PIR Motion Sensor (Digital) ✅ OK
 
-// Thiết bị điều khiển
-#define SERVO_PIN       18   // GPIO18 - Servo signal
-#define FAN_ENA_PIN     19   // GPIO19 - L298N Enable A (PWM)
-#define FAN_IN1_PIN     21   // GPIO21 - L298N Input 1
-#define FAN_IN2_PIN     22   // GPIO22 - L298N Input 2
-#define LED_PIN         26   // GPIO26 - LED Control (PWM or Relay)
+// Thiết bị điều khiển (TRÁNH ADC2 - DÙNG GPIO AN TOÀN)
+#define SERVO_PIN       18   // GPIO18 - Servo signal (VSPI_CLK) ✅ OK
+#define FAN_ENA_PIN     19   // GPIO19 - L298N Enable A (PWM/VSPI_MISO) ✅ OK
+#define FAN_IN1_PIN     21   // GPIO21 - L298N Input 1 (I2C_SDA) ✅ OK
+#define FAN_IN2_PIN     22   // GPIO22 - L298N Input 2 (I2C_SCL) ✅ OK
+#define LED_PIN         2    // GPIO2  - LED Control (ĐỔI TỪ 26 → 2) ✅ Built-in LED
 
 // ============================================================================
 // DEVICE CODES (Khớp với app Flutter)

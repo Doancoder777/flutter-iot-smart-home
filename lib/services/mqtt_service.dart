@@ -110,16 +110,30 @@ class MqttService {
   }
 
   void subscribeToAll() {
+    print('╔═══════════════════════════════════════════════════════╗');
+    print('║  📥 SUBSCRIBING TO ALL MQTT TOPICS                    ║');
+    print('╚═══════════════════════════════════════════════════════╝');
+
     // Subscribe to all sensor topics
+    print('📡 Subscribing to: ${MqttTopics.base}/sensors/#');
     subscribe('${MqttTopics.base}/sensors/#');
 
+    // Subscribe to all device topics (for Arduino devices sending state)
+    print('📡 Subscribing to: ${MqttTopics.base}/devices/#');
+    subscribe('${MqttTopics.base}/devices/#');
+
     // Subscribe to all alert topics
+    print('📡 Subscribing to: ${MqttTopics.base}/alerts/#');
     subscribe('${MqttTopics.base}/alerts/#');
 
     // Subscribe to status topics
+    print('📡 Subscribing to: ${MqttTopics.base}/status/#');
     subscribe('${MqttTopics.base}/status/#');
 
-    print('✅ MQTT: Subscribed to all topics');
+    print(
+      '✅ MQTT: Subscribed to all topics (sensors, devices, alerts, status)',
+    );
+    print('🎧 Now listening for messages...\n');
   }
 
   void publish(String topic, String message, {bool retain = false}) {
@@ -212,6 +226,7 @@ class MqttService {
   }
 
   void _setupMessageListener() {
+    print('🎧 [MQTT] Setting up message listener...');
     client.updates!.listen(
       (List<MqttReceivedMessage<MqttMessage>> messages) {
         final recMess = messages[0].payload as MqttPublishMessage;
@@ -220,11 +235,19 @@ class MqttService {
           recMess.payload.message,
         );
 
-        // Debug log
-        print('📨 MQTT: Received [$topic]: $payload');
+        // Debug log với highlight
+        print('╔═══════════════════════════════════════════════════════╗');
+        print('║  📨 MQTT MESSAGE RECEIVED!                            ║');
+        print('╚═══════════════════════════════════════════════════════╝');
+        print('📍 Topic:   $topic');
+        print('📦 Payload: $payload');
+        print('🕐 Time:    ${DateTime.now()}');
+        print('───────────────────────────────────────────────────────');
 
         // Notify listeners
+        print('🔔 [MQTT] Calling onMessageReceived callback...');
         onMessageReceived?.call(topic, payload);
+        print('✅ [MQTT] Message forwarded to handler\n');
       },
       onError: (error) {
         print('❌ MQTT Stream Error: $error');

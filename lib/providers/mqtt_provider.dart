@@ -18,6 +18,8 @@ class MqttProvider extends ChangeNotifier {
   bool get isConnected => _isConnected;
   String get connectionStatus => _connectionStatus;
   MqttConfig? get currentConfig => _currentConfig;
+  MqttService get mqttService =>
+      _mqttService; // Expose MQTT service để sensors có thể ping
 
   MqttProvider(this._mqttService) {
     _configService = MqttConfigService(LocalStorageService());

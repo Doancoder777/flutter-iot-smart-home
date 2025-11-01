@@ -56,7 +56,7 @@ class _AnimatedSensorCardState extends State<AnimatedSensorCard>
             borderRadius: BorderRadius.circular(16),
           ),
           child: Container(
-            padding: EdgeInsets.all(12),
+            padding: EdgeInsets.all(8), // ✅ Giảm từ 12 → 8
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               gradient: LinearGradient(
@@ -72,30 +72,30 @@ class _AnimatedSensorCardState extends State<AnimatedSensorCard>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: EdgeInsets.all(10),
+                  padding: EdgeInsets.all(8), // ✅ Giảm từ 10 → 8
                   decoration: BoxDecoration(
                     color: widget.color.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(widget.icon, size: 28, color: widget.color),
+                  child: Icon(widget.icon, size: 24, color: widget.color), // ✅ Giảm từ 28 → 24
                 ),
 
-                SizedBox(height: 8),
+                SizedBox(height: 6), // ✅ Giảm từ 8 → 6
 
                 Text(
                   widget.title,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]), // ✅ Giảm từ 13 → 12
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
 
-                SizedBox(height: 4),
+                SizedBox(height: 3), // ✅ Giảm từ 4 → 3
 
                 Text(
                   widget.value,
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 18, // ✅ Giảm từ 20 → 18
                     fontWeight: FontWeight.bold,
                     color: widget.color,
                   ),

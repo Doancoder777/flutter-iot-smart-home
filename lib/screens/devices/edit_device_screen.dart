@@ -206,18 +206,18 @@ class _EditDeviceScreenState extends State<EditDeviceScreen> {
               child: TextFormField(
                 controller: _deviceCodeController,
                 decoration: InputDecoration(
-                  labelText: 'Mã thiết bị (6 ký tự)',
-                  hintText: 'VD: ABCDEF',
+                  labelText: 'Mã thiết bị (3-20 ký tự)',
+                  hintText: 'VD: DHT22_001',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.qr_code),
                 ),
-                maxLength: 6,
+                maxLength: 20,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Vui lòng nhập mã thiết bị';
                   }
-                  if (value.length != 6) {
-                    return 'Mã thiết bị phải có 6 ký tự';
+                  if (value.length < 3 || value.length > 20) {
+                    return 'Mã thiết bị phải từ 3-20 ký tự';
                   }
                   return null;
                 },

@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sensor_provider.dart';
-import '../../providers/device_provider.dart';
 import '../../models/user_sensor.dart';
-import '../../models/device_model.dart';
+import '../../models/sensor_health.dart';
 import '../../config/app_colors.dart';
 import '../../widgets/sensor_avatar.dart';
 import 'add_sensor_screen.dart';
+// 🎨 Import custom sensor widgets
+import '../../widgets/sensors/temperature_gauge_widget.dart';
+import '../../widgets/sensors/humidity_droplet_widget.dart';
+import '../../widgets/sensors/soil_moisture_plant_widget.dart';
+import '../../widgets/sensors/light_sun_widget.dart';
+import '../../widgets/sensors/gas_alert_widget.dart';
+import '../../widgets/sensors/motion_detector_widget.dart';
+import '../../widgets/sensors/dust_indicator_widget.dart';
+import '../../widgets/sensors/rain_drop_widget.dart';
+import '../../widgets/sensors/pressure_gauge_widget.dart';
+import '../../widgets/sensors/smoke_detector_widget.dart';
 
 class SensorsScreen extends StatelessWidget {
   @override
@@ -137,16 +147,12 @@ class SensorsScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        GridView.builder(
+        // 📱 MỖI HÀNG 1 CARD - Full width
+        ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 1.2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
           itemCount: weatherSensors.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             return _buildSensorCard(context, weatherSensors[index]);
           },
@@ -177,12 +183,14 @@ class SensorsScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        ListView.builder(
+        // 🎨 Dùng custom widgets cho mỗi sensor type
+        ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: allSensors.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
-            return _buildSensorListItem(
+            return _buildSensorWidget(
               context,
               allSensors[index],
               sensorProvider,
@@ -193,143 +201,244 @@ class SensorsScreen extends StatelessWidget {
     );
   }
 
+  /// 🎨 Factory method - trả về widget custom cho mỗi loại sensor
+  Widget _buildSensorWidget(
+    BuildContext context,
+    UserSensor sensor,
+    SensorProvider sensorProvider,
+  ) {
+    // Kiểm tra sensorTypeId để chọn widget phù hợp
+    switch (sensor.sensorTypeId.toLowerCase()) {
+      case 'temperature':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: TemperatureGaugeWidget(sensor: sensor),
+        );
+
+      case 'humidity':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: HumidityDropletWidget(sensor: sensor),
+        );
+
+      case 'soil_moisture':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: SoilMoisturePlantWidget(sensor: sensor),
+        );
+
+      case 'light':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: LightSunWidget(sensor: sensor),
+        );
+
+      case 'gas':
+      case 'co2':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: GasAlertWidget(sensor: sensor),
+        );
+
+      case 'smoke':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: SmokeDetectorWidget(sensor: sensor),
+        );
+
+      case 'motion':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: MotionDetectorWidget(sensor: sensor),
+        );
+
+      case 'dust':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: DustIndicatorWidget(sensor: sensor),
+        );
+
+      case 'rain':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: RainDropWidget(sensor: sensor),
+        );
+
+      case 'pressure':
+        return GestureDetector(
+          onTap: () => _showSensorOptions(context, sensor),
+          child: PressureGaugeWidget(sensor: sensor),
+        );
+
+      // Fallback: dùng card cũ cho các sensor không có custom widget
+      default:
+        return _buildSensorCard(context, sensor);
+    }
+  }
+
   Widget _buildSensorCard(BuildContext context, UserSensor sensor) {
+    final healthInfo = sensor.healthInfo;
+
     return Card(
       elevation: 2,
+      // 🎨 Border màu theo health level
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: healthInfo.color.withOpacity(0.3), width: 2),
+      ),
       child: InkWell(
         onTap: () => _showSensorOptions(context, sensor),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  SensorAvatar(
-                    icon: sensor.icon,
-                    avatarPath: sensor.avatarPath,
-                    size: 40,
-                    isActive: true, // Sensor luôn active khi hiển thị
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
+              // � Avatar
+              SensorAvatar(
+                icon: sensor.icon,
+                avatarPath: sensor.avatarPath,
+                size: 48,
+                isActive: true,
+              ),
+              const SizedBox(width: 16),
+
+              // 📊 Thông tin sensor
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Tên sensor
+                    Text(
                       sensor.displayName,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 4),
+
+                    // 🩺 Health status
+                    if (healthInfo.level != HealthLevel.unknown)
+                      Row(
+                        children: [
+                          Icon(
+                            healthInfo.icon,
+                            size: 14,
+                            color: healthInfo.color,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              healthInfo.description,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: healthInfo.color,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    // ⏰ Timestamp
+                    if (sensor.lastUpdateAt != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Cập nhật: ${_formatLastUpdate(sensor.lastUpdateAt!)}',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+
+                    // 💡 Action advice
+                    if (healthInfo.actionAdvice != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: healthInfo.color.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: healthInfo.color.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lightbulb_outline,
+                              size: 14,
+                              color: healthInfo.color,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                healthInfo.actionAdvice!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: healthInfo.color,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // 📈 Value (bên phải, to và nổi bật)
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    sensor.formattedValue,
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: healthInfo.level == HealthLevel.unknown
+                          ? AppColors.primary
+                          : healthInfo.color,
+                    ),
                   ),
+                  if (healthInfo.level != HealthLevel.unknown) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: healthInfo.color,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        healthInfo.label,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              const Spacer(),
-              Text(
-                sensor.formattedValue,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              if (sensor.lastUpdateAt != null)
-                Text(
-                  'Cập nhật: ${_formatLastUpdate(sensor.lastUpdateAt!)}',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSensorListItem(
-    BuildContext context,
-    UserSensor sensor,
-    SensorProvider sensorProvider,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: SensorAvatar(
-              icon: sensor.icon,
-              avatarPath: sensor.avatarPath,
-              size: 30,
-              isActive: true,
-            ),
-          ),
-        ),
-        title: Text(sensor.displayName),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Topic: ${sensor.mqttTopic}'),
-            if (sensor.lastUpdateAt != null)
-              Text(
-                'Cập nhật: ${_formatLastUpdate(sensor.lastUpdateAt!)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              sensor.formattedValue,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) =>
-                  _handleSensorAction(context, sensor, value, sensorProvider),
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'check_connection',
-                  child: Row(
-                    children: [
-                      Icon(Icons.wifi_find, size: 16, color: Colors.blue),
-                      SizedBox(width: 8),
-                      Text('Kiểm tra kết nối'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 16),
-                      SizedBox(width: 8),
-                      Text('Chỉnh sửa'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 16, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Xóa', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        onTap: () => _showSensorOptions(context, sensor),
       ),
     );
   }
@@ -463,25 +572,6 @@ class SensorsScreen extends StatelessWidget {
     }
   }
 
-  void _handleSensorAction(
-    BuildContext context,
-    UserSensor sensor,
-    String action,
-    SensorProvider sensorProvider,
-  ) {
-    switch (action) {
-      case 'check_connection':
-        _checkSensorMqttConnection(context, sensor);
-        break;
-      case 'edit':
-        // TODO: Implement edit sensor
-        break;
-      case 'delete':
-        _confirmDeleteSensor(context, sensor);
-        break;
-    }
-  }
-
   void _confirmDeleteSensor(BuildContext context, UserSensor sensor) {
     showDialog(
       context: context,
@@ -507,123 +597,6 @@ class SensorsScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _checkSensorMqttConnection(
-    BuildContext context,
-    UserSensor sensor,
-  ) async {
-    // Hiển thị dialog loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Đang kiểm tra kết nối MQTT...'),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      // Cần tạo Device object tạm thời từ sensor để sử dụng checkMqttConnection
-      // Vì DeviceProvider.checkMqttConnection nhận Device parameter
-      final tempDevice = Device(
-        id: sensor.id,
-        name: sensor.displayName,
-        room: 'sensor_check',
-        type: DeviceType.relay,
-        icon: sensor.icon,
-        state: false,
-        keyName: sensor.id,
-        deviceCode: sensor.deviceCode,
-        mqttConfig: sensor.mqttConfig,
-      );
-
-      final deviceProvider = Provider.of<DeviceProvider>(
-        context,
-        listen: false,
-      );
-
-      bool isConnected = await deviceProvider.checkMqttConnection(tempDevice);
-
-      if (context.mounted) {
-        Navigator.pop(context); // Đóng loading dialog
-
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Row(
-              children: [
-                Icon(
-                  isConnected ? Icons.check_circle : Icons.error,
-                  color: isConnected ? Colors.green : Colors.red,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    isConnected ? 'Kết nối thành công' : 'Kết nối thất bại',
-                    style: TextStyle(
-                      color: isConnected ? Colors.green[800] : Colors.red[800],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isConnected
-                      ? 'Cảm biến "${sensor.displayName}" đang kết nối bình thường!'
-                      : 'Không thể kết nối với cảm biến "${sensor.displayName}".',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                if (!isConnected) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Vui lòng kiểm tra:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('• ESP32 đã bật và kết nối WiFi'),
-                  const Text('• Cấu hình MQTT broker đúng'),
-                  const Text('• Mã cảm biến (deviceCode) khớp với ESP32'),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  foregroundColor: isConnected
-                      ? Colors.green
-                      : Colors.grey[600],
-                ),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.pop(context); // Đóng loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Lỗi kiểm tra kết nối: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   Future<void> _deleteSensor(BuildContext context, UserSensor sensor) async {

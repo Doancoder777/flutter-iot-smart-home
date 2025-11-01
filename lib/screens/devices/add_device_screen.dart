@@ -534,7 +534,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                               enabled: !_autoGenerateCode,
                               decoration: InputDecoration(
                                 labelText: 'Mã thiết bị',
-                                hintText: 'Nhập mã thiết bị (6 ký tự)',
+                                hintText: 'Nhập mã thiết bị (3-20 ký tự)',
                                 border: const OutlineInputBorder(),
                                 prefixIcon: const Icon(Icons.vpn_key),
                                 suffixIcon: _autoGenerateCode
@@ -548,8 +548,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Vui lòng nhập mã thiết bị';
                                 }
-                                if (value.length != 6) {
-                                  return 'Mã thiết bị phải có 6 ký tự';
+                                if (value.length < 3 || value.length > 20) {
+                                  return 'Mã thiết bị phải từ 3-20 ký tự';
                                 }
                                 return null;
                               },

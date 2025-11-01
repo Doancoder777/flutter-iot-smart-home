@@ -7,7 +7,7 @@ class AiConfig {
   /// ⚠️ QUAN TRỌNG:
   /// - API key đã được setup sẵn
   /// - Không commit API key lên Git public repo
-  static const String geminiApiKey = 'AIzaSyC8CAUR5s5euV4xeiOolhdxZAUjgjPTw5k';
+  static const String geminiApiKey = 'AIzaSyCVaAcxkhRJeSHffVwtD3Mwc1xWS02aVuU';
 
   /// Model name: gemini-2.0-flash-exp
   ///

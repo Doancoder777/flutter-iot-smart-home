@@ -1,185 +1,210 @@
 /*
- * ============================================================================
- * TEST FAN với L298N Motor Driver
- * ============================================================================
- * Kết nối L298N -> ESP32:
- * - IN1 -> GPIO21
- * - IN2 -> GPIO22
- * - ENA -> GPIO19 (PWM)
- * - GND -> GND
+ * SƠ ĐỒ ĐẤU NỐI GP2Y1014 VỚI ESP32 38-PIN
  * 
- * Kết nối L298N -> Quạt 12V:
- * - OUT1 -> Fan (+)
- * - OUT2 -> Fan (-)
- * - +12V -> Nguồn 12V (+)
- * - GND -> Nguồn 12V (-)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * QUAN TRỌNG: GPIO36 = ADC1_0 (BÊN TRÁI, HÀNG THỨ 3)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
- * MQTT Commands:
- * Topic: smart_home/devices/FAN_L298_001/cmd
- * Payload: {"speed": 171}  // 0-255
- * Payload: {"command": "off"}
- * ============================================================================
- 
-#include <WiFi.h>
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
+ * ESP32 BÊN TRÁI (từ trên xuống):
+ * ─────────────────────────────────
+ * 1. 3V3
+ * 2. RESTART/EN
+ * 3. GPIO36 (ADC1_0) ← ĐÂY LÀ CHÂN ĐỌC Vo! ⚫ DÂY ĐEN
+ * 4. GPIO39 (ADC1_3)
+ * 5. GPIO34 (ADC1_6)
+ * 6. GPIO35 (ADC1_7)
+ * 7. GPIO32
+ * 8. GPIO33
+ * 9. GPIO25 ← Điều khiển LED! 🔵⚪ DÂY XANH + TRẮNG
+ * 10. GPIO26
+ * 11. GPIO27
+ * 12. GPIO14
+ * 13. GPIO12
+ * 14. GND ← Ground! 🟢🟡 DÂY XANH LÁ + VÀNG
+ * 
+ * ESP32 BÊN PHẢI (từ trên xuống):
+ * ─────────────────────────────────
+ * 1. GND
+ * 2. GPIO23
+ * 3. GPIO22
+ * 4. GPIO1 (TX0)
+ * 5. GPIO3 (RX0)
+ * 6. GPIO21
+ * 7. GND
+ * 8. GPIO19
+ * 9. GPIO18
+ * 10. GPIO5
+ * 11. GPIO17
+ * 12. GPIO16
+ * 13. GPIO4
+ * 14. GPIO0
+ * 15. GPIO2 (LED)
+ * 16. GPIO15
+ * 17. GND
+ * 18. 5V ← Nguồn 5V! 🔴 DÂY ĐỎ
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * BẢNG KẾT NỐI CHÍNH XÁC:
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * GP2Y1014          Màu          ESP32 38-pin
+ * ──────────────────────────────────────────────────
+ * PIN 1 (V-LED)  →  🔵 Xanh     → GPIO25 (qua R 150Ω)
+ *                                  ↑ BÊN TRÁI, HÀNG 9
+ * 
+ * PIN 2 (LED-GND)→  🟢 Xanh lá  → GND
+ *                                  ↑ BÊN TRÁI, HÀNG 14
+ *                                  hoặc BÊN PHẢI
+ * 
+ * PIN 3 (LED)    →  ⚪ Trắng    → GPIO25
+ *                                  ↑ BÊN TRÁI, HÀNG 9
+ * 
+ * PIN 4 (S-GND)  →  🟡 Vàng     → GND
+ *                                  ↑ BÊN TRÁI, HÀNG 14
+ *                                  hoặc BÊN PHẢI
+ * 
+ * PIN 5 (Vo)     →  ⚫ ĐEN      → GPIO36 (ADC1_0)
+ *                                  ↑ BÊN TRÁI, HÀNG 3 !!!
+ * 
+ * PIN 6 (Vcc)    →  🔴 Đỏ       → 5V (+ tụ 220µF)
+ *                                  ↑ BÊN PHẢI, HÀNG 18
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 
-// WiFi & MQTT Config
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqtt_server = "16257efaa31f4843a11e19f83c34e594.s1.eu.hivemq.cloud";
-const int mqtt_port = 8883;
-const char* mqtt_user = "zedho";
-const char* mqtt_pass = "Hokage2004";
+#define LED_PIN   25    // GPIO25 - BÊN TRÁI, HÀNG 9
+#define DUST_PIN  36    // GPIO36 (ADC1_0) - BÊN TRÁI, HÀNG 3
 
-// Device Config
-const char* DEVICE_ID = "ESP32_FAN";
-const char* DEVICE_CODE = "FAN_L298_001";
-
-// Pin Definition
-#define FAN_ENA_PIN 19
-#define FAN_IN1_PIN 21
-#define FAN_IN2_PIN 22
-
-// Objects
-WiFiClientSecure espClient;
-PubSubClient client(espClient);
-
-// Variables
-int currentSpeed = 0;
+#define SAMPLING_TIME    280
+#define DELTA_TIME       40
+#define SLEEP_TIME       9680
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n=== L298N FAN MOTOR TEST ===");
+  delay(1000);
   
-  pinMode(FAN_ENA_PIN, OUTPUT);
-  pinMode(FAN_IN1_PIN, OUTPUT);
-  pinMode(FAN_IN2_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
   
-  digitalWrite(FAN_IN1_PIN, LOW);
-  digitalWrite(FAN_IN2_PIN, LOW);
-  analogWrite(FAN_ENA_PIN, 0);
+  pinMode(DUST_PIN, INPUT);
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
   
-  setup_wifi();
-  
-  espClient.setInsecure();
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
-  
-  Serial.println("Setup completed!");
-  Serial.println("\n📌 Send MQTT command to control:");
-  Serial.println("   Topic: smart_home/devices/FAN_L298_001/cmd");
-  Serial.println("   Payload: {\"speed\": 171}  // 0-255");
-  
-  // Demo speeds
-  Serial.println("\n🔄 Running demo speeds...");
-  int speeds[] = {0, 85, 170, 255, 170, 85, 0};
-  for (int speed : speeds) {
-    controlFan(speed);
-    delay(3000);
-  }
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║  GP2Y1014 + ESP32 38-PIN              ║");
+  Serial.println("╚════════════════════════════════════════╝");
+  Serial.println();
+  Serial.println("📍 VỊ TRÍ CÁC CHÂN:");
+  Serial.println("   • GPIO36 (Vo): BÊN TRÁI, HÀNG 3");
+  Serial.println("   • GPIO25 (LED): BÊN TRÁI, HÀNG 9");
+  Serial.println("   • GND: BÊN TRÁI HÀNG 14 hoặc BÊN PHẢI");
+  Serial.println("   • 5V: BÊN PHẢI, HÀNG 18 (cuối cùng)");
+  Serial.println();
+  Serial.println("⚠️ KIỂM TRA NGAY:");
+  Serial.println("   1. Dây ĐEN ⚫ cắm BÊN TRÁI, HÀNG 3?");
+  Serial.println("   2. Dây XANH + TRẮNG cắm HÀNG 9?");
+  Serial.println("   3. Dây ĐỎ 🔴 cắm BÊN PHẢI cuối (5V)?");
+  Serial.println();
+  Serial.println("========================================");
+  delay(3000);
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-}
-
-void setup_wifi() {
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  // Bật LED
+  digitalWrite(LED_PIN, LOW);
+  delayMicroseconds(SAMPLING_TIME);
   
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+  // Đọc ADC
+  int adcValue = analogRead(DUST_PIN);
   
-  Serial.println("\nWiFi connected!");
-  Serial.print("IP: ");
-  Serial.println(WiFi.localIP());
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Connecting to MQTT...");
-    
-    if (client.connect(DEVICE_ID, mqtt_user, mqtt_pass)) {
-      Serial.println("connected!");
-      
-      String topic = "smart_home/devices/" + String(DEVICE_CODE) + "/cmd";
-      client.subscribe(topic.c_str());
-      Serial.println("Subscribed: " + topic);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" retry in 5s");
-      delay(5000);
-    }
-  }
-}
-
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.println("\n=== MQTT Command Received ===");
-  Serial.print("Topic: ");
-  Serial.println(topic);
+  delayMicroseconds(DELTA_TIME);
+  digitalWrite(LED_PIN, HIGH);
+  delayMicroseconds(SLEEP_TIME);
   
-  char message[length + 1];
-  memcpy(message, payload, length);
-  message[length] = '\0';
-  Serial.print("Payload: ");
-  Serial.println(message);
-  
-  StaticJsonDocument<128> doc;
-  DeserializationError error = deserializeJson(doc, message);
-  
-  if (error) {
-    Serial.println("❌ JSON parse failed!");
-    return;
+  // Chuyển đổi
+  float voltage = (adcValue / 4095.0) * 3.3;
+  float dustDensity = 0.0;
+  if (voltage >= 0.6) {
+    dustDensity = (voltage - 0.6) / 0.005;
   }
   
-  if (doc.containsKey("speed")) {
-    int speed = doc["speed"];
-    controlFan(speed);
-    
-    String stateTopic = "smart_home/devices/" + String(DEVICE_CODE) + "/state";
-    String stateMsg = "{\"speed\":" + String(speed) + ",\"state\":" + (speed > 0 ? "true" : "false") + "}";
-    client.publish(stateTopic.c_str(), stateMsg.c_str());
-    Serial.println("📡 Published state: " + stateMsg);
-  }
-  else if (doc.containsKey("command")) {
-    String cmd = doc["command"];
-    if (cmd == "off") {
-      controlFan(0);
-      
-      String stateTopic = "smart_home/devices/" + String(DEVICE_CODE) + "/state";
-      client.publish(stateTopic.c_str(), "{\"speed\":0,\"state\":false}");
-      Serial.println("📡 Published state: OFF");
-    }
-  }
+  // Hiển thị
+  Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  Serial.print("📍 Chân đọc: GPIO36 (ADC1_0) = ");
+  Serial.println(DUST_PIN);
   
-  Serial.println("============================\n");
-}
-
-void controlFan(int speed) {
-  speed = constrain(speed, 0, 255);
+  Serial.print("📊 ADC Raw: ");
+  Serial.println(adcValue);
   
-  if (speed == 0) {
-    digitalWrite(FAN_IN1_PIN, LOW);
-    digitalWrite(FAN_IN2_PIN, LOW);
-    analogWrite(FAN_ENA_PIN, 0);
-    Serial.println("🌪️ Fan: OFF");
+  Serial.print("⚡ Điện áp Vo: ");
+  Serial.print(voltage, 3);
+  Serial.println(" V");
+  
+  Serial.print("💨 Nồng độ bụi: ");
+  Serial.print(dustDensity, 2);
+  Serial.println(" μg/m³");
+  
+  // Đánh giá
+  if (adcValue == 0) {
+    Serial.println();
+    Serial.println("❌ LỖI: Không đọc được tín hiệu!");
+    Serial.println("🔧 KIỂM TRA:");
+    Serial.println("   → Dây ĐEN ⚫ có cắm HÀNG 3 BÊN TRÁI?");
+    Serial.println("   → Dây ĐỎ 🔴 có cắm 5V BÊN PHẢI?");
+    Serial.println("   → Dây XANH LÁ 🟢 + VÀNG 🟡 cắm GND?");
+  } else if (voltage < 0.5) {
+    Serial.println("⚠️ Điện áp thấp - Kiểm tra nguồn 5V");
   } else {
-    digitalWrite(FAN_IN1_PIN, HIGH);
-    digitalWrite(FAN_IN2_PIN, LOW);
-    analogWrite(FAN_ENA_PIN, speed);
-    Serial.printf("🌪️ Fan speed: %d/255 (%.1f%%)\n", speed, (speed/255.0)*100);
+    if (dustDensity < 12) {
+      Serial.println("🌍 ✅ TỐT");
+    } else if (dustDensity < 35.5) {
+      Serial.println("🌍 🟢 TRUNG BÌNH");
+    } else if (dustDensity < 55.5) {
+      Serial.println("🌍 🟡 KÉM");
+    } else if (dustDensity < 150.5) {
+      Serial.println("🌍 🟠 XẤU");
+    } else {
+      Serial.println("🌍 🔴 RẤT XẤU");
+    }
   }
   
-  currentSpeed = speed;
+  Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  Serial.println();
+  
+  delay(1000);
 }
 
-*/
-
+/*
+ * ╔══════════════════════════════════════════════════╗
+ * ║  TÓM TẮT VỊ TRÍ CHÂN TRÊN ESP32 38-PIN:         ║
+ * ╚══════════════════════════════════════════════════╝
+ * 
+ *        ESP32 DevKit 38-PIN
+ *        
+ *   BÊN TRÁI              BÊN PHẢI
+ *   ─────────            ─────────
+ *   3V3                  GND
+ *   RESTART/EN           GPIO23
+ *   GPIO36 ●───Vo        GPIO22
+ *   GPIO39               GPIO1
+ *   GPIO34               GPIO3
+ *   GPIO35               GPIO21
+ *   GPIO32               GND
+ *   GPIO33               GPIO19
+ *   GPIO25 ●───LED       GPIO18
+ *   GPIO26               GPIO5
+ *   GPIO27               GPIO17
+ *   GPIO14               GPIO16
+ *   GPIO12               GPIO4
+ *   GND ●──────┐         GPIO0
+ *              │         GPIO2
+ *            Ground      GPIO15
+ *                        GND
+ *                        5V ●─── Nguồn
+ *                        
+ * Kết nối:
+ * • Vo (đen) → GPIO36 (trái, hàng 3)
+ * • LED (xanh+trắng) → GPIO25 (trái, hàng 9)
+ * • GND (xanh lá+vàng) → GND (trái, hàng 14)
+ * • Vcc (đỏ) → 5V (phải, cuối cùng)
+ */

@@ -1,0 +1,8 @@
+# Ignore all Arduino files in this directory
+# This prevents Flutter from trying to compile .ino files
+
+*.ino
+*.h
+*.cpp
+*.c
+

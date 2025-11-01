@@ -19,7 +19,7 @@ class ConditionBuilder extends StatefulWidget {
 
 class _ConditionBuilderState extends State<ConditionBuilder> {
   bool _noSensor = false; // Checkbox trạng thái
-  String? _selectedSensor = 'temperature';
+  String? _selectedSensor;
   String _operator = '>';
   double _value = 30;
 
@@ -37,9 +37,24 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
   void initState() {
     super.initState();
     _loadSensors();
+    
+    // Set default sensor sau khi load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_selectedSensor == null && _sensors.isNotEmpty) {
+        setState(() {
+          _selectedSensor = _sensors.first['id'];
+          // Nếu là boolean sensor, set value mặc định là 1 (phát hiện)
+          if (_isBooleanSensor(_selectedSensor!)) {
+            _value = 1;
+            _operator = '==';
+          }
+        });
+      }
+    });
+    
     if (widget.initialCondition != null) {
       _noSensor = widget.initialCondition!['noSensor'] ?? false;
-      _selectedSensor = widget.initialCondition!['sensor'] ?? 'temperature';
+      _selectedSensor = widget.initialCondition!['sensor'];
       _operator = widget.initialCondition!['operator'] ?? '>';
       _value = widget.initialCondition!['value']?.toDouble() ?? 30;
     }
@@ -61,7 +76,12 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
     // Load sensors from provider
     final sensorProvider = Provider.of<SensorProvider>(context, listen: false);
     _sensors = sensorProvider.userSensors.map((sensor) {
-      return {'id': sensor.id, 'name': sensor.displayName};
+      return {
+        'id': sensor.id,
+        'name': sensor.displayName,
+        'unit': sensor.unit,
+        'dataType': sensor.sensorType?.dataType.toString() ?? '',
+      };
     }).toList();
   }
 
@@ -119,56 +139,110 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
                 onChanged: (value) {
                   setState(() {
                     _selectedSensor = value;
+                    // Nếu chuyển sang boolean sensor, đặt value mặc định
+                    if (value != null && _isBooleanSensor(value)) {
+                      _value = 1.0;
+                      _operator = '==';
+                    } else {
+                      // Nếu chuyển sang numeric sensor, đặt value mặc định
+                      if (_value == 0 || _value == 1) {
+                        _value = 30.0;
+                      }
+                      if (_operator == '==') {
+                        _operator = '>';
+                      }
+                    }
                     _notifyChange();
                   });
                 },
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: DropdownButtonFormField<String>(
-                      value: _operator,
-                      decoration: const InputDecoration(
-                        labelText: 'Điều kiện',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _operators.map((op) {
-                        return DropdownMenuItem(
-                          value: op['value'],
-                          child: Text(op['label']!),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _operator = value!;
-                          _notifyChange();
-                        });
-                      },
+              // Kiểm tra nếu là boolean sensor (PIR, motion)
+              if (_selectedSensor != null && _isBooleanSensor(_selectedSensor!))
+                ...[
+                  // Boolean sensor: chỉ hiển thị dropdown chọn Phát hiện/Không phát hiện
+                  DropdownButtonFormField<String>(
+                    value: '==',
+                    decoration: const InputDecoration(
+                      labelText: 'Điều kiện',
+                      border: OutlineInputBorder(),
                     ),
+                    items: const [
+                      DropdownMenuItem(value: '==', child: Text('Bằng')),
+                    ],
+                    onChanged: null, // Disabled vì chỉ có 1 option
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 1,
-                    child: TextFormField(
-                      initialValue: _value.toString(),
-                      decoration: InputDecoration(
-                        labelText: 'Giá trị',
-                        border: const OutlineInputBorder(),
-                        suffix: Text(_getUnit(_selectedSensor!)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (value) {
-                        setState(() {
-                          _value = double.tryParse(value) ?? 0;
-                          _notifyChange();
-                        });
-                      },
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<double>(
+                    value: (_value == 0 || _value == 1) ? _value : 1.0,
+                    decoration: const InputDecoration(
+                      labelText: 'Giá trị',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.pan_tool),
                     ),
+                    items: const [
+                      DropdownMenuItem(value: 1.0, child: Text('Phát hiện')),
+                      DropdownMenuItem(value: 0.0, child: Text('Không phát hiện')),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _value = value!;
+                        _notifyChange();
+                      });
+                    },
+                  ),
+                ]
+              else
+                ...[
+                  // Numeric sensor: hiển thị operator và text input
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: _operator,
+                          decoration: const InputDecoration(
+                            labelText: 'Điều kiện',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _operators.map((op) {
+                            return DropdownMenuItem(
+                              value: op['value'],
+                              child: Text(op['label']!),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _operator = value!;
+                              _notifyChange();
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: TextFormField(
+                          initialValue: _value.toString(),
+                          decoration: InputDecoration(
+                            labelText: 'Giá trị',
+                            border: const OutlineInputBorder(),
+                            suffix: _selectedSensor != null
+                                ? Text(_getUnit(_selectedSensor!))
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (value) {
+                            setState(() {
+                              _value = double.tryParse(value) ?? 0;
+                              _notifyChange();
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
             ],
           ],
         ),
@@ -176,21 +250,20 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
     );
   }
 
-  String _getUnit(String sensor) {
-    switch (sensor) {
-      case 'temperature':
-        return '°C';
-      case 'humidity':
-      case 'soil':
-        return '%';
-      case 'gas':
-        return 'ppm';
-      case 'dust':
-        return 'µg/m³';
-      case 'light':
-        return 'lux';
-      default:
-        return '';
-    }
+  String _getUnit(String sensorId) {
+    // Tìm sensor theo ID
+    final sensor = _sensors.firstWhere(
+      (s) => s['id'] == sensorId,
+      orElse: () => {'id': '', 'name': '', 'unit': ''},
+    );
+    return sensor['unit'] ?? '';
+  }
+
+  bool _isBooleanSensor(String sensorId) {
+    final sensor = _sensors.firstWhere(
+      (s) => s['id'] == sensorId,
+      orElse: () => {'id': '', 'name': '', 'unit': '', 'dataType': ''},
+    );
+    return sensor['dataType']?.contains('bool') ?? false;
   }
 }

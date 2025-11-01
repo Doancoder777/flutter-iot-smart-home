@@ -218,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 return GridView.builder(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 1.0,
+                    childAspectRatio: 0.85, // ✅ Giảm xuống để card cao hơn (tránh overflow)
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                   ),

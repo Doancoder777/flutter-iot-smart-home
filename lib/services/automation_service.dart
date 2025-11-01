@@ -1,53 +1,52 @@
 import 'dart:async';
 import '../providers/automation_provider.dart';
 import '../providers/device_provider.dart';
-import '../models/sensor_data.dart';
+import '../providers/sensor_provider.dart';
 
 /// Service để xử lý logic automation
 class AutomationService {
   final AutomationProvider automationProvider;
   final DeviceProvider deviceProvider;
+  final SensorProvider sensorProvider; // ✅ Thêm SensorProvider
 
   Timer? _evaluationTimer;
-  SensorData? _lastSensorData;
-  // final Map<String, DateTime> _lastExecutionTime = {}; // Unused - removed
   final Map<String, bool> _ruleActiveState =
       {}; // Track rule đang active hay không
-  // final Duration _cooldownDuration = Duration(seconds: 30); // Unused - removed
 
   AutomationService({
     required this.automationProvider,
     required this.deviceProvider,
+    required this.sensorProvider, // ✅ Thêm parameter
   });
 
   void initialize() {
     // Đánh giá quy tắc mỗi 5 giây
     _evaluationTimer = Timer.periodic(Duration(seconds: 5), (_) {
-      // print('⏰ Timer tick - evaluating rules...');
       _evaluateRules();
     });
+    
+    // ✅ Lắng nghe thay đổi sensor data
+    sensorProvider.addListener(_evaluateRules);
+    
     print('✅ AutomationService: Initialized');
   }
 
-  void updateSensorData(SensorData data) {
-    _lastSensorData = data;
-    // Đánh giá ngay khi có dữ liệu mới
-    _evaluateRules();
-  }
-
   void _evaluateRules() {
-    // Tạo sensor data map, dùng giá trị mặc định nếu chưa có dữ liệu
-    final sensorDataMap = _lastSensorData != null
-        ? {
-            'temperature': _lastSensorData!.temperature,
-            'humidity': _lastSensorData!.humidity,
-            'gas': _lastSensorData!.gas,
-            'dust': _lastSensorData!.dust,
-            'light': _lastSensorData!.light,
-            'soil': _lastSensorData!.soilMoisture,
-            'rain': _lastSensorData!.rain,
-          }
-        : <String, dynamic>{}; // Empty map cho quy tắc chỉ dựa vào thời gian
+    // ✅ BUILD SENSOR MAP từ SensorProvider với REAL sensor IDs
+    final sensorDataMap = <String, dynamic>{};
+    
+    for (var sensor in sensorProvider.userSensors) {
+      if (sensor.isActive && sensor.lastValue != null) {
+        // Dùng sensor ID làm key (VD: "sensor_1762005354206")
+        sensorDataMap[sensor.id] = sensor.lastValue;
+      }
+    }
+    
+    // Debug log (uncomment để debug)
+    // print('📊 Automation: ${sensorDataMap.length} sensors available');
+    // sensorDataMap.forEach((id, value) {
+    //   print('   - $id: $value');
+    // });
 
     // Lấy danh sách rules được trigger
     final triggeredRules = automationProvider.getTriggeredRules(sensorDataMap);
@@ -61,14 +60,17 @@ class AutomationService {
       // Chỉ thực thi khi CHUYỂN TRẠNG THÁI
       if (isTriggered && !wasActive) {
         // Rule vừa active → Thực thi ON actions
-        print('🟢 Rule "${rule.name}" activated');
+        print('═══════════════════════════════════════════════════');
+        print('🟢 AUTOMATION TRIGGERED: "${rule.name}"');
+        print('📋 Conditions met, executing ${rule.startActions.length} actions...');
         for (var action in rule.startActions) {
           _executeAction(action.deviceId, action);
         }
         _ruleActiveState[ruleId] = true;
+        print('═══════════════════════════════════════════════════');
       } else if (!isTriggered && wasActive) {
         // Rule vừa inactive → Có thể tắt thiết bị (tùy logic)
-        print('🔴 Rule "${rule.name}" deactivated');
+        print('🔴 AUTOMATION DEACTIVATED: "${rule.name}"');
         // Nếu muốn tự động tắt khi hết time:
         for (var action in rule.startActions) {
           _executeOffAction(action.deviceId, action);
@@ -137,6 +139,7 @@ class AutomationService {
 
   void dispose() {
     _evaluationTimer?.cancel();
+    sensorProvider.removeListener(_evaluateRules); // ✅ Remove listener
     print('🛑 AutomationService: Disposed');
   }
 }
