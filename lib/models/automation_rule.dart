@@ -157,7 +157,7 @@ class Condition {
       if (currentValue is bool) {
         final boolValue = currentValue;
         final expectedValue = _parseBool(value);
-        
+
         switch (operator) {
           case '==':
             return boolValue == expectedValue;
@@ -168,15 +168,15 @@ class Condition {
             return false;
         }
       }
-      
+
       // ✅ XỬ LÝ NUMERIC (temperature, humidity, light, gas, etc.)
       final numericValue = _toNumeric(currentValue);
       final expectedNumeric = _toNumeric(value);
-      
+
       if (numericValue == null || expectedNumeric == null) {
         return false; // Không thể so sánh
       }
-      
+
       switch (operator) {
         case '>':
           return numericValue > expectedNumeric;
@@ -198,7 +198,7 @@ class Condition {
       return false;
     }
   }
-  
+
   // Helper: Parse bool từ nhiều format (true, false, 1, 0, "1", "0")
   bool _parseBool(dynamic value) {
     if (value is bool) return value;
@@ -209,7 +209,7 @@ class Condition {
     }
     return false;
   }
-  
+
   // Helper: Convert to numeric (int/double)
   num? _toNumeric(dynamic value) {
     if (value is num) return value;

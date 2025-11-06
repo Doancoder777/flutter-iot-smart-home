@@ -3,14 +3,14 @@ import 'package:version3/models/device_model.dart';
 import 'package:version3/models/sensor_data.dart';
 
 /// 🧪 SIMPLE TEST SCRIPT
-/// 
+///
 /// Chạy: dart run test/simple_ai_test.dart
 void main() async {
   print('🧪 AI VOICE SERVICE - SIMPLE TEST');
   print('═══════════════════════════════════════════════════════════');
-  
+
   final aiService = AiVoiceService();
-  
+
   // Mock sensor data
   final sensorData = SensorData(
     temperature: 28.5,
@@ -58,7 +58,7 @@ void main() async {
       devices: devices,
       sensorData: sensorData,
     );
-    
+
     _printResult(result1);
   } catch (e) {
     print('❌ ERROR: $e');
@@ -74,7 +74,7 @@ void main() async {
       devices: devices,
       sensorData: sensorData,
     );
-    
+
     _printResult(result2);
   } catch (e) {
     print('❌ ERROR: $e');
@@ -90,7 +90,7 @@ void main() async {
       devices: devices,
       sensorData: sensorData,
     );
-    
+
     _printResult(result3);
   } catch (e) {
     print('❌ ERROR: $e');
@@ -106,7 +106,7 @@ void main() async {
       devices: devices,
       sensorData: sensorData,
     );
-    
+
     _printResult(result4);
   } catch (e) {
     print('❌ ERROR: $e');
@@ -122,7 +122,7 @@ void main() async {
       devices: devices,
       sensorData: sensorData,
     );
-    
+
     _printResult(result5);
   } catch (e) {
     print('❌ ERROR: $e');
@@ -141,22 +141,25 @@ void _printResult(CommandResult? result) {
 
   print('📊 RESULT:');
   print('   Success: ${result.success}');
-  
+
   if (result.success) {
     print('   Response Type: ${result.responseType}');
-    
+
     if (result.responseType == ResponseType.sensorQuery) {
       print('   ├─ Sensor Type: ${result.sensorType}');
       print('   └─ Sensor Value: ${result.sensorValue}');
-      
+
       // Format output
-      final formatted = _formatSensorValue(result.sensorType!, result.sensorValue);
+      final formatted = _formatSensorValue(
+        result.sensorType!,
+        result.sensorValue,
+      );
       print('   💬 Display: $formatted');
     } else {
       print('   ├─ Device: ${result.deviceKeyName}');
       print('   ├─ Action: ${result.action}');
       print('   └─ Value: ${result.value}');
-      
+
       // Format output
       final formatted = _formatDeviceAction(result);
       print('   💬 Display: $formatted');
@@ -170,34 +173,41 @@ String _formatSensorValue(String sensorType, dynamic value) {
   switch (sensorType) {
     case 'temperature':
       final temp = value as double;
-      String condition = temp < 20 ? '(Lạnh)' 
-                       : temp < 26 ? '(Mát)'
-                       : temp < 30 ? '(Ấm)' 
-                       : '(Nóng)';
+      String condition = temp < 20
+          ? '(Lạnh)'
+          : temp < 26
+          ? '(Mát)'
+          : temp < 30
+          ? '(Ấm)'
+          : '(Nóng)';
       return '🌡️ Nhiệt độ: ${temp.toStringAsFixed(1)}°C $condition';
-      
+
     case 'humidity':
       final humidity = value as double;
-      String condition = humidity < 30 ? '(Khô)' 
-                       : humidity < 60 ? '(Bình thường)' 
-                       : '(Ẩm)';
+      String condition = humidity < 30
+          ? '(Khô)'
+          : humidity < 60
+          ? '(Bình thường)'
+          : '(Ẩm)';
       return '💧 Độ ẩm: ${humidity.toStringAsFixed(0)}% $condition';
-      
+
     case 'rain':
       return value == 1 ? '🌧️ Đang mưa' : '🌤️ Không mưa';
-      
+
     case 'gas':
       final gas = value as double;
       String condition = gas < 1000 ? '(An toàn)' : '(⚠️ Cảnh báo!)';
       return '💨 Khí gas: ${gas.toStringAsFixed(0)} ppm $condition';
-      
+
     case 'dust':
       final dust = value as double;
-      String condition = dust < 50 ? '(Tốt)' 
-                       : dust < 100 ? '(Trung bình)' 
-                       : '(⚠️ Xấu)';
+      String condition = dust < 50
+          ? '(Tốt)'
+          : dust < 100
+          ? '(Trung bình)'
+          : '(⚠️ Xấu)';
       return '🌫️ Bụi PM2.5: ${dust.toStringAsFixed(1)} µg/m³ $condition';
-      
+
     default:
       return 'Sensor $sensorType: $value';
   }

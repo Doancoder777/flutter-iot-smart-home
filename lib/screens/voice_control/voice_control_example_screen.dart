@@ -213,7 +213,7 @@ class _VoiceControlExampleScreenState extends State<VoiceControlExampleScreen> {
     try {
       // 🤖 Call AI with sensor data support
       final sensorData = sensorProvider.currentData;
-      
+
       print('═══════════════════════════════════════');
       print('🔍 DEBUG INFO:');
       print('   Command: "$command"');
@@ -227,7 +227,7 @@ class _VoiceControlExampleScreenState extends State<VoiceControlExampleScreen> {
       print('      Gas: ${sensorData.gas} ppm');
       print('      Dust: ${sensorData.dust}');
       print('═══════════════════════════════════════');
-      
+
       final result = await _aiService.processVoiceCommand(
         userId: authProvider.currentUser!.id,
         voiceCommand: command,
@@ -252,7 +252,7 @@ class _VoiceControlExampleScreenState extends State<VoiceControlExampleScreen> {
         print('');
         print('✅✅✅ SUCCESS! ✅✅✅');
         print('📝 BẠN NÓI: "$command"');
-        
+
         if (result!.responseType == ResponseType.deviceControl) {
           print('🎯 LOẠI: Điều khiển thiết bị');
           print('🔌 THIẾT BỊ: ${result.deviceKeyName}');
@@ -269,7 +269,7 @@ class _VoiceControlExampleScreenState extends State<VoiceControlExampleScreen> {
           // 📊 Sensor Query
           _handleSensorQuery(result);
         }
-        
+
         print('💬 HIỂN THỊ: $_responseText');
         print('✅✅✅✅✅✅✅✅✅✅✅✅✅');
         print('');

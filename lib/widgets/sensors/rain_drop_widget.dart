@@ -18,7 +18,7 @@ class RainDropWidget extends StatelessWidget {
     final RainIntensity intensity = _getRainIntensity(rainLevel);
 
     return Container(
-      height: 200, // ✅ REVERT lại height cố định  
+      height: 200, // ✅ REVERT lại height cố định
       padding: const EdgeInsets.all(12), // ✅ Giảm padding để tránh overflow
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -152,25 +152,28 @@ class RainDropWidget extends StatelessWidget {
             ),
           ),
 
-          // Description
-          if (healthInfo.level != HealthLevel.unknown) ...[
-            const SizedBox(height: 8), // ✅ Giảm từ 12 → 8
+          // Description (chỉ hiển thị nếu không có advice)
+          if (healthInfo.level != HealthLevel.unknown &&
+              healthInfo.actionAdvice == null) ...[
+            const SizedBox(height: 6),
             Text(
               healthInfo.description,
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 color: Colors.grey[700],
                 fontStyle: FontStyle.italic,
               ),
             ),
           ],
 
-          // Advice
+          // Advice (ưu tiên hiển thị advice hơn description)
           if (healthInfo.actionAdvice != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: healthInfo.color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -181,15 +184,17 @@ class RainDropWidget extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.lightbulb_outline,
-                    size: 16,
+                    size: 14,
                     color: healthInfo.color,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   Flexible(
                     child: Text(
                       healthInfo.actionAdvice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: healthInfo.color,
                         fontWeight: FontWeight.w600,
                       ),

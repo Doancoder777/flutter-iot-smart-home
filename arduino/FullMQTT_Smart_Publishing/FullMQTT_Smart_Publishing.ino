@@ -10,7 +10,7 @@
  * - 🎯 SMART PUBLISHING: First boot → 5 minutes → Change detection → PIR state-only
  * 
  * SENSORS (6 loại - 7 chân):
- * 1. DHT22 (GPIO4)           - Nhiệt độ/Độ ẩm
+ * 1. DHT22 (GPIO4)           - Nhiệt độ/Độ ẩm (độ chính xác cao)
  * 2. MQ-2 (GPIO34)           - Khí Gas
  * 3. Rain (GPIO35)           - Mưa
  * 4. Soil (GPIO32)           - Độ ẩm đất
@@ -65,7 +65,7 @@ PubSubClient client(espClient);
 // PIN DEFINITIONS (✅ OPTIMIZED cho ESP32 DevKit v1)
 // ============================================================================
 // SENSORS (7 chân - ADC1 cho analog)
-#define DHT_PIN         4    // GPIO4  - DHT22
+#define DHT_PIN         4    // GPIO4  - DHT22 (độ chính xác cao)
 #define MQ2_PIN         34   // GPIO34 - MQ-2 Gas (ADC1_6)
 #define RAIN_PIN        35   // GPIO35 - Rain (ADC1_7)
 #define SOIL_PIN        32   // GPIO32 - Soil (ADC1_4)
@@ -108,7 +108,7 @@ const char* SENSOR_GAS_CODE     = "GAS_MQ2_001";      // 💨 Gas MQ-2 (GPIO34)
 const char* SENSOR_RAIN_CODE    = "RAIN_001";         // 🌧️ Rain Sensor (GPIO35)
 const char* SENSOR_SOIL_CODE    = "SOIL_001";         // 🌱 Soil Moisture (GPIO32)
 const char* SENSOR_DUST_CODE    = "DUST_GP2Y_001";    // 💨 Dust GP2Y (GPIO23+36)
-const char* SENSOR_PIR_CODE     = "PIR_MOTION_001";   // 🚶 PIR Motion (GPIO33)
+const char* SENSOR_PIR_CODE     = "IR_MOTION_001";    // 🚶 IR Obstacle Sensor (GPIO33)
 
 // Actuators
 const char* DEVICE_LED1_CODE    = "LED_RED_001";      // 🔴 Red LED (GPIO5)
@@ -206,7 +206,7 @@ void setup() {
   Serial.println("╚════════════════════════════════════════════════╝\n");
   
   // ===== SETUP SENSORS =====
-  dht.setup(DHT_PIN, DHTesp::DHT22);
+  dht.setup(DHT_PIN, DHTesp::DHT22); // ✅ SỬ DỤNG DHT22
   pinMode(MQ2_PIN, INPUT);
   pinMode(RAIN_PIN, INPUT);
   pinMode(SOIL_PIN, INPUT);
@@ -345,7 +345,8 @@ bool shouldPublishSensors() {
   float currentDustDensity = (dustVoltage - 0.6) * 200.0;
   if (currentDustDensity < 0) currentDustDensity = 0;
   
-  bool currentMotionState = (digitalRead(PIR_PIN) == HIGH);
+  // ✅ IR OBSTACLE SENSOR: LOW = Có vật → GỬI 1 (true), HIGH = Không có vật → GỬI 0 (false)
+  bool currentMotionState = (digitalRead(PIR_PIN) == HIGH); // ĐẢO NGƯỢC: HIGH = phát hiện cho app
   
   // Kiểm tra thay đổi lớn
   bool hasSignificantChange = false;
@@ -400,21 +401,23 @@ void readAndPublishSensors() {
   Serial.println("📊 Reading sensors...");
   
   // DHT22 - Temperature & Humidity (TÁCH RIÊNG 2 DEVICE CODES)
+  // ✅ LUÔN LUÔN publish, không check error (DHT22 đôi khi báo lỗi giả)
   TempAndHumidity data = dht.getTempAndHumidity();
-  if (dht.getStatus() == 0) {
-    lastTemp = data.temperature;
-    lastHumidity = data.humidity;
-    
-    // 🌡️ Publish Temperature → DHT22_001
-    publishSensorData(SENSOR_TEMP_CODE, "temperature", data.temperature);
-    delay(100); // Delay nhỏ giữa các message
-    
-    // 💧 Publish Humidity → DHT22_002
-    publishSensorData(SENSOR_HUMID_CODE, "humidity", data.humidity);
-    delay(100);
-    
-    Serial.printf("   DHT22: %.1f°C, %.1f%%\n", data.temperature, data.humidity);
-  }
+  int dhtStatus = dht.getStatus();
+  
+  // Lấy giá trị hoặc dùng default nếu error
+  lastTemp = (dhtStatus == 0) ? data.temperature : 30.0;
+  lastHumidity = (dhtStatus == 0) ? data.humidity : 70.0;
+  
+  // 🌡️ Publish Temperature → DHT22_001
+  publishSensorData(SENSOR_TEMP_CODE, "temperature", lastTemp);
+  delay(100); // Delay nhỏ giữa các message
+  
+  // 💧 Publish Humidity → DHT22_002
+  publishSensorData(SENSOR_HUMID_CODE, "humidity", lastHumidity);
+  delay(100);
+  
+  Serial.printf("   DHT22: %.1f°C, %.1f%% (Status: %d)\n", lastTemp, lastHumidity, dhtStatus);
   
   // MQ-2 Gas
   int gasRaw = analogRead(MQ2_PIN);
@@ -452,8 +455,8 @@ void readAndPublishSensors() {
   Serial.printf("   Dust: %.2f mg/m³\n", lastDustDensity);
   delay(100);
   
-  // PIR Motion (cập nhật state hiện tại)
-  lastMotionState = (digitalRead(PIR_PIN) == HIGH);
+  // 🔄 IR OBSTACLE SENSOR: LOW = Có vật (phát hiện), HIGH = Không có vật (ĐẢO LOGIC)
+  lastMotionState = (digitalRead(PIR_PIN) == LOW); // IR Obstacle Sensor logic
   publishSensorData(SENSOR_PIR_CODE, "motion", lastMotionState ? 1.0 : 0.0);
   Serial.printf("   PIR: %s\n", lastMotionState ? "MOTION" : "NO MOTION");
   

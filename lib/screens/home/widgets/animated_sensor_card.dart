@@ -77,14 +77,21 @@ class _AnimatedSensorCardState extends State<AnimatedSensorCard>
                     color: widget.color.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(widget.icon, size: 24, color: widget.color), // ✅ Giảm từ 28 → 24
+                  child: Icon(
+                    widget.icon,
+                    size: 24,
+                    color: widget.color,
+                  ), // ✅ Giảm từ 28 → 24
                 ),
 
                 SizedBox(height: 6), // ✅ Giảm từ 8 → 6
 
                 Text(
                   widget.title,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]), // ✅ Giảm từ 13 → 12
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ), // ✅ Giảm từ 13 → 12
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

@@ -37,27 +37,28 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
   void initState() {
     super.initState();
     _loadSensors();
-    
-    // Set default sensor sau khi load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_selectedSensor == null && _sensors.isNotEmpty) {
-        setState(() {
-          _selectedSensor = _sensors.first['id'];
-          // Nếu là boolean sensor, set value mặc định là 1 (phát hiện)
-          if (_isBooleanSensor(_selectedSensor!)) {
-            _value = 1;
-            _operator = '==';
-          }
-        });
-      }
-    });
-    
+
+    // ✅ LOAD INITIAL CONDITION TRƯỚC (nếu đang edit rule)
     if (widget.initialCondition != null) {
       _noSensor = widget.initialCondition!['noSensor'] ?? false;
       _selectedSensor = widget.initialCondition!['sensor'];
       _operator = widget.initialCondition!['operator'] ?? '>';
       _value = widget.initialCondition!['value']?.toDouble() ?? 30;
     }
+
+    // Set default sensor sau khi load (CHỈ NẾU CHƯA CÓ initialCondition)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_selectedSensor == null && _sensors.isNotEmpty) {
+        setState(() {
+          _selectedSensor = _sensors.first['id'];
+          // Nếu là boolean sensor, set value mặc định là 1 (phát hiện)
+          if (_isBooleanSensor(_selectedSensor!)) {
+            _value = 1; // ✅ 1 = Phát hiện (có vật)
+            _operator = '==';
+          }
+        });
+      }
+    });
 
     // Ensure selected sensor exists in the list
     if (_sensors.isNotEmpty && _selectedSensor != null) {
@@ -158,91 +159,95 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
               ),
               const SizedBox(height: 16),
               // Kiểm tra nếu là boolean sensor (PIR, motion)
-              if (_selectedSensor != null && _isBooleanSensor(_selectedSensor!))
-                ...[
-                  // Boolean sensor: chỉ hiển thị dropdown chọn Phát hiện/Không phát hiện
-                  DropdownButtonFormField<String>(
-                    value: '==',
-                    decoration: const InputDecoration(
-                      labelText: 'Điều kiện',
-                      border: OutlineInputBorder(),
+              if (_selectedSensor != null &&
+                  _isBooleanSensor(_selectedSensor!)) ...[
+                // Boolean sensor: chỉ hiển thị dropdown chọn Phát hiện/Không phát hiện
+                DropdownButtonFormField<String>(
+                  value: '==',
+                  decoration: const InputDecoration(
+                    labelText: 'Điều kiện',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: '==', child: Text('Bằng')),
+                  ],
+                  onChanged: null, // Disabled vì chỉ có 1 option
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<double>(
+                  value: (_value == 0 || _value == 1) ? _value : 1.0,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá trị',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.pan_tool),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 1.0,
+                      child: Text('Phát hiện (có vật)'),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: '==', child: Text('Bằng')),
-                    ],
-                    onChanged: null, // Disabled vì chỉ có 1 option
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<double>(
-                    value: (_value == 0 || _value == 1) ? _value : 1.0,
-                    decoration: const InputDecoration(
-                      labelText: 'Giá trị',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.pan_tool),
+                    DropdownMenuItem(
+                      value: 0.0,
+                      child: Text('Không phát hiện (không có vật)'),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 1.0, child: Text('Phát hiện')),
-                      DropdownMenuItem(value: 0.0, child: Text('Không phát hiện')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _value = value!;
-                        _notifyChange();
-                      });
-                    },
-                  ),
-                ]
-              else
-                ...[
-                  // Numeric sensor: hiển thị operator và text input
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: DropdownButtonFormField<String>(
-                          value: _operator,
-                          decoration: const InputDecoration(
-                            labelText: 'Điều kiện',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: _operators.map((op) {
-                            return DropdownMenuItem(
-                              value: op['value'],
-                              child: Text(op['label']!),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _operator = value!;
-                              _notifyChange();
-                            });
-                          },
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _value = value!;
+                      _notifyChange();
+                    });
+                  },
+                ),
+              ] else ...[
+                // Numeric sensor: hiển thị operator và text input
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        value: _operator,
+                        decoration: const InputDecoration(
+                          labelText: 'Điều kiện',
+                          border: OutlineInputBorder(),
                         ),
+                        items: _operators.map((op) {
+                          return DropdownMenuItem(
+                            value: op['value'],
+                            child: Text(op['label']!),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _operator = value!;
+                            _notifyChange();
+                          });
+                        },
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 1,
-                        child: TextFormField(
-                          initialValue: _value.toString(),
-                          decoration: InputDecoration(
-                            labelText: 'Giá trị',
-                            border: const OutlineInputBorder(),
-                            suffix: _selectedSensor != null
-                                ? Text(_getUnit(_selectedSensor!))
-                                : null,
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (value) {
-                            setState(() {
-                              _value = double.tryParse(value) ?? 0;
-                              _notifyChange();
-                            });
-                          },
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: TextFormField(
+                        initialValue: _value.toString(),
+                        decoration: InputDecoration(
+                          labelText: 'Giá trị',
+                          border: const OutlineInputBorder(),
+                          suffix: _selectedSensor != null
+                              ? Text(_getUnit(_selectedSensor!))
+                              : null,
                         ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          setState(() {
+                            _value = double.tryParse(value) ?? 0;
+                            _notifyChange();
+                          });
+                        },
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
+              ],
             ],
           ],
         ),

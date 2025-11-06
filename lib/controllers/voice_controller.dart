@@ -261,17 +261,12 @@ class VoiceController extends ChangeNotifier {
         '✅ Voice Controller: AI parsed - Device: ${result.deviceKeyName}, Action: ${result.action}',
       );
 
-      // Tìm device bằng keyName
-      Device? device;
-      try {
-        device = devices.firstWhere((d) => d.keyName == result.deviceKeyName);
-      } catch (e) {
-        device = null;
-      }
+      // Tìm device bằng FUZZY MATCHING (nhiều cách)
+      Device? device = _findDeviceByKey(devices, result.deviceKeyName!);
 
       if (device == null) {
         _statusMessage = '❌ Không tìm thấy thiết bị "${result.deviceKeyName}"';
-        _errorMessage = 'Thiết bị không tồn tại';
+        _errorMessage = 'Thiết bị không tồn tại trong hệ thống';
         _isProcessing = false;
         notifyListeners();
         return;
@@ -359,6 +354,105 @@ class VoiceController extends ChangeNotifier {
       default:
         return action;
     }
+  }
+
+  /// 🔍 Tìm thiết bị bằng FUZZY MATCHING (nhiều cách)
+  Device? _findDeviceByKey(List<Device> devices, String searchKey) {
+    if (devices.isEmpty || searchKey.isEmpty) return null;
+
+    // Chuẩn hóa search key
+    final normalizedSearch = _normalizeString(searchKey);
+
+    print(
+      '🔍 Tìm thiết bị với key: "$searchKey" (normalized: "$normalizedSearch")',
+    );
+
+    // 1. Tìm chính xác bằng keyName
+    var device = devices
+        .where((d) => d.keyName == normalizedSearch)
+        .firstOrNull;
+    if (device != null) {
+      print('✅ Tìm thấy (exact keyName): ${device.name}');
+      return device;
+    }
+
+    // 2. Tìm chính xác bằng deviceCode
+    device = devices.where((d) => d.deviceCode == searchKey).firstOrNull;
+    if (device != null) {
+      print('✅ Tìm thấy (exact deviceCode): ${device.name}');
+      return device;
+    }
+
+    // 3. Tìm bằng tên hiển thị (normalize cả 2 bên)
+    device = devices
+        .where((d) => _normalizeString(d.name) == normalizedSearch)
+        .firstOrNull;
+    if (device != null) {
+      print('✅ Tìm thấy (normalized name): ${device.name}');
+      return device;
+    }
+
+    // 4. Tìm kiếm partial match (keyName chứa search key)
+    device = devices
+        .where((d) => d.keyName.contains(normalizedSearch))
+        .firstOrNull;
+    if (device != null) {
+      print('✅ Tìm thấy (partial keyName): ${device.name}');
+      return device;
+    }
+
+    // 5. Tìm kiếm partial match (tên hiển thị chứa search key)
+    device = devices
+        .where((d) => _normalizeString(d.name).contains(normalizedSearch))
+        .firstOrNull;
+    if (device != null) {
+      print('✅ Tìm thấy (partial name): ${device.name}');
+      return device;
+    }
+
+    // 6. Tìm theo từ khóa (split và match)
+    final keywords = normalizedSearch.split('_').where((s) => s.isNotEmpty);
+    for (final d in devices) {
+      final deviceName = _normalizeString(d.name);
+      final deviceKey = d.keyName;
+
+      // Đếm số từ khóa khớp
+      int matchCount = 0;
+      for (final keyword in keywords) {
+        if (deviceName.contains(keyword) || deviceKey.contains(keyword)) {
+          matchCount++;
+        }
+      }
+
+      // Nếu khớp >= 50% số từ khóa → chấp nhận
+      if (matchCount >= keywords.length * 0.5) {
+        print(
+          '✅ Tìm thấy (keyword match $matchCount/${keywords.length}): ${d.name}',
+        );
+        return d;
+      }
+    }
+
+    print('❌ Không tìm thấy thiết bị nào phù hợp');
+    return null;
+  }
+
+  /// Chuẩn hóa chuỗi (lowercase, bỏ dấu, trim)
+  String _normalizeString(String input) {
+    return input
+        .toLowerCase()
+        .replaceAll(RegExp(r'[àáạảãâầấậẩẫăằắặẳẵ]'), 'a')
+        .replaceAll(RegExp(r'[èéẹẻẽêềếệểễ]'), 'e')
+        .replaceAll(RegExp(r'[ìíịỉĩ]'), 'i')
+        .replaceAll(RegExp(r'[òóọỏõôồốộổỗơờớợởỡ]'), 'o')
+        .replaceAll(RegExp(r'[ùúụủũưừứựửữ]'), 'u')
+        .replaceAll(RegExp(r'[ỳýỵỷỹ]'), 'y')
+        .replaceAll(RegExp(r'[đ]'), 'd')
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '')
+        .trim();
   }
 
   /// 🧹 Xóa lịch sử commands

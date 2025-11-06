@@ -1,13 +1,34 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// 🤖 AI Configuration for Gemini Voice Control
 ///
 /// Get your API key from: https://aistudio.google.com/app/apikey
 class AiConfig {
-  /// Gemini API Key
+  /// Gemini API Key (Default - fallback)
   ///
   /// ⚠️ QUAN TRỌNG:
-  /// - API key đã được setup sẵn
-  /// - Không commit API key lên Git public repo
-  static const String geminiApiKey = 'AIzaSyCVaAcxkhRJeSHffVwtD3Mwc1xWS02aVuU';
+  /// - Người dùng có thể thay đổi API key trong Settings
+  /// - API key được lưu trong SharedPreferences
+  /// - Không commit API key cá nhân lên Git public repo
+  static const String _defaultApiKey =
+      'AIzaSyCVaAcxkhRJeSHffVwtD3Mwc1xWS02aVuU';
+
+  /// Get API key from SharedPreferences or use default
+  static Future<String> getApiKey() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedKey = prefs.getString('gemini_api_key');
+      if (savedKey != null && savedKey.isNotEmpty) {
+        return savedKey;
+      }
+    } catch (e) {
+      print('⚠️ Error loading API key from SharedPreferences: $e');
+    }
+    return _defaultApiKey;
+  }
+
+  /// Legacy getter for backward compatibility
+  static String get geminiApiKey => _defaultApiKey;
 
   /// Model name: gemini-2.0-flash-exp
   ///

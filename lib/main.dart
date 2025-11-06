@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'config/app_theme.dart';
 import 'providers/mqtt_provider.dart';
@@ -48,6 +49,9 @@ void main() async {
 
   // 🔥 KHỞI TẠO FIREBASE TRƯỚC TIÊN
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // 🔔 Register FCM background message handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Khởi tạo services
   final mqttService = MqttService();

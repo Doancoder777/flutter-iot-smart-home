@@ -4,7 +4,7 @@ import 'package:version3/models/device_model.dart';
 import 'package:version3/models/sensor_data.dart';
 
 /// 🧪 Test AI Voice Service
-/// 
+///
 /// Chạy test: flutter test test/ai_voice_service_test.dart
 void main() {
   group('AI Voice Service Tests', () {
@@ -33,7 +33,7 @@ void main() {
       // Call AI
       print('\n🧪 TEST 1: Hỏi nhiệt độ');
       print('═══════════════════════════════════════');
-      
+
       final result = await aiService.processVoiceCommand(
         userId: 'test_user',
         voiceCommand: 'Nhiệt độ bao nhiêu?',
@@ -47,7 +47,7 @@ void main() {
       print('Sensor Type: ${result?.sensorType}');
       print('Sensor Value: ${result?.sensorValue}');
       print('Error: ${result?.error}');
-      
+
       // Assertions
       expect(result, isNotNull);
       expect(result!.success, isTrue);
@@ -86,7 +86,7 @@ void main() {
       print('Response Type: ${result?.responseType}');
       print('Sensor Type: ${result?.sensorType}');
       print('Sensor Value: ${result?.sensorValue}');
-      
+
       expect(result, isNotNull);
       expect(result!.success, isTrue);
       expect(result.responseType, ResponseType.sensorQuery);
@@ -123,7 +123,7 @@ void main() {
       print('Response Type: ${result?.responseType}');
       print('Sensor Type: ${result?.sensorType}');
       print('Sensor Value: ${result?.sensorValue}');
-      
+
       expect(result, isNotNull);
       expect(result!.success, isTrue);
       expect(result.responseType, ResponseType.sensorQuery);
@@ -133,7 +133,7 @@ void main() {
 
     test('Test 4: Device Control - Bật đèn', () async {
       final sensorData = SensorData.empty();
-      
+
       final devices = [
         Device(
           id: '1',
@@ -162,7 +162,7 @@ void main() {
       print('Response Type: ${result?.responseType}');
       print('Device Key: ${result?.deviceKeyName}');
       print('Action: ${result?.action}');
-      
+
       expect(result, isNotNull);
       expect(result!.success, isTrue);
       expect(result.responseType, ResponseType.deviceControl);
@@ -200,7 +200,7 @@ void main() {
       print('Response Type: ${result?.responseType}');
       print('Sensor Type: ${result?.sensorType}');
       print('Sensor Value: ${result?.sensorValue}');
-      
+
       expect(result, isNotNull);
       expect(result!.success, isTrue);
       expect(result.responseType, ResponseType.sensorQuery);
@@ -223,7 +223,7 @@ void main() {
       print('\n📊 RESULT:');
       print('Success: ${result?.success}');
       print('Error: ${result?.error}');
-      
+
       // Có thể success hoặc có error message
       expect(result, isNotNull);
     });

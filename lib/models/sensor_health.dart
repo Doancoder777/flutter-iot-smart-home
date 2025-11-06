@@ -79,11 +79,11 @@ class SensorThresholds {
 
   // 💧 ĐỘ ẨM KHÔNG KHÍ (%)
   static const Map<String, List<double>> humidity = {
-    'excellent': [40, 60], // 40-60%
-    'good': [30, 70], // 30-70%
-    'moderate': [20, 80], // 20-80%
-    'poor': [10, 90], // 10-90%
-    // < 10 hoặc > 90 = dangerous
+    'excellent': [40, 60], // 40-60% - Lý tưởng
+    'good': [30, 70], // 30-70% - Tốt
+    'moderate': [20, 85], // 20-85% - Hơi ẩm/khô
+    'poor': [15, 95], // 15-95% - Ẩm ướt hoặc hanh khô
+    // < 15 = rất khô, > 95 = cực kỳ ẩm (hiếm khi xảy ra)
   };
 
   // 🌱 ĐỘ ẨM ĐẤT (%)
@@ -97,11 +97,11 @@ class SensorThresholds {
 
   // ☀️ ÁNH SÁNG (lux)
   static const Map<String, List<double>> light = {
-    'excellent': [500, 1000],
-    'good': [200, 1500],
-    'moderate': [100, 2000],
-    'poor': [50, 2500],
-    // < 50 = quá tối, > 2500 = quá sáng
+    'excellent': [500, 1000], // Lý tưởng cho sinh hoạt
+    'good': [200, 1500], // Đủ sáng
+    'moderate': [100, 2000], // Hơi tối/sáng
+    'poor': [30, 3000], // Tối hoặc chói
+    // < 30 = rất tối, > 3000 = rất chói (không phải "nguy hiểm")
   };
 
   // ☁️ KHÍ GAS (ppm)
@@ -185,6 +185,16 @@ class SensorThresholds {
     // > 2000 = poor air quality
   };
 
+  // 🌧️ CẢM BIẾN MƯA (0-1023, analog sensor)
+  // Giá trị CAO = KHÔ, giá trị THẤP = ƯỚT (rain detected)
+  static const Map<String, List<double>> rain = {
+    'excellent': [700, 1023], // Rất khô ráo
+    'good': [500, 699], // Khô
+    'moderate': [300, 499], // Hơi ẩm
+    'poor': [100, 299], // Có mưa nhẹ
+    // < 100 = Mưa to (không phải "dangerous", chỉ là mưa thôi)
+  };
+
   /// Lấy threshold cho sensor type
   static Map<String, List<double>>? getThresholds(String sensorTypeId) {
     switch (sensorTypeId) {
@@ -214,6 +224,8 @@ class SensorThresholds {
         return ph;
       case 'co2':
         return co2;
+      case 'rain':
+        return rain;
       default:
         return null; // Không có threshold định nghĩa
     }
@@ -407,13 +419,13 @@ class SensorHealthCalculator {
           case HealthLevel.excellent:
             return 'Độ ẩm lý tưởng';
           case HealthLevel.good:
-            return 'Độ ẩm tốt';
+            return 'Độ ẩm thoải mái';
           case HealthLevel.moderate:
-            return 'Độ ẩm hơi cao/thấp';
+            return 'Hơi ẩm ướt';
           case HealthLevel.poor:
-            return 'Độ ẩm không tốt';
+            return 'Ẩm ướt hoặc hanh khô';
           case HealthLevel.dangerous:
-            return 'Độ ẩm quá cao hoặc quá thấp';
+            return 'Cực kỳ ẩm ướt hoặc khô';
           default:
             return '';
         }
@@ -463,6 +475,36 @@ class SensorHealthCalculator {
           default:
             return '';
         }
+      case 'light':
+        switch (level) {
+          case HealthLevel.excellent:
+            return 'Ánh sáng lý tưởng';
+          case HealthLevel.good:
+            return 'Ánh sáng tốt';
+          case HealthLevel.moderate:
+            return 'Hơi tối hoặc hơi sáng';
+          case HealthLevel.poor:
+            return 'Quá tối hoặc quá chói';
+          case HealthLevel.dangerous:
+            return 'Rất tối hoặc rất chói';
+          default:
+            return '';
+        }
+      case 'rain':
+        switch (level) {
+          case HealthLevel.excellent:
+            return 'Trời nắng đẹp';
+          case HealthLevel.good:
+            return 'Khô ráo';
+          case HealthLevel.moderate:
+            return 'Hơi ẩm';
+          case HealthLevel.poor:
+            return 'Có mưa nhẹ';
+          case HealthLevel.dangerous:
+            return 'Đang mưa to';
+          default:
+            return '';
+        }
       default:
         switch (level) {
           case HealthLevel.excellent:
@@ -497,17 +539,29 @@ class SensorHealthCalculator {
         if (value < 18) return '💡 Bật máy sưởi';
         return null;
       case 'humidity':
-        if (value > 70) return '💡 Bật máy hút ẩm';
-        if (value < 30) return '💡 Bật máy tạo ẩm';
+        if (value > 80) return '💡 Bật quạt hút ẩm';
+        if (value < 25) return '💡 Bật máy tạo ẩm';
         return null;
       case 'soil_moisture':
         if (value < 30) return '💧 Cần tưới nước cho cây';
+        return null;
+      case 'light':
+        if (value < 100) return '💡 Bật đèn';
+        if (value > 2500) return '🪟 Kéo rèm hoặc giảm độ sáng';
+        return null;
+      case 'rain':
+        if (value < 100) return '☂️ Đóng dàn phơi';
+        if (value < 300) return '🌂 Nên mang ô';
         return null;
       case 'gas':
       case 'smoke':
         return '🚪 Mở cửa sổ ngay lập tức!';
       case 'dust':
-        return '😷 Nên đeo khẩu trang khi ra ngoài';
+        if (level == HealthLevel.dangerous)
+          return '😷 Hạn chế ra ngoài, đeo khẩu trang';
+        if (level == HealthLevel.poor)
+          return '😷 Nên đeo khẩu trang khi ra ngoài';
+        return null;
       default:
         return null;
     }

@@ -1,11 +1,26 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// 🔔 Background message handler (PHẢI Ở TOP-LEVEL)
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  print('📨 Background message: ${message.notification?.title}');
+}
 
 class NotificationService {
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
+  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
   bool _initialized = false;
+  String? _fcmToken;
+  String? get fcmToken => _fcmToken;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -25,19 +40,89 @@ class NotificationService {
     );
 
     try {
+      // Initialize local notifications
       await _notifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: _onNotificationTap,
       );
 
-      // Request permissions
+      // Request local notification permissions
       await _requestPermissions();
 
+      // 🔔 Initialize Firebase Cloud Messaging
+      await _initializeFCM();
+
       _initialized = true;
-      print('✅ NotificationService: Initialized');
+      print('✅ NotificationService: Initialized (Local + FCM)');
     } catch (e) {
       print('❌ NotificationService Init Error: $e');
       _initialized = false;
+    }
+  }
+
+  /// Initialize Firebase Cloud Messaging
+  Future<void> _initializeFCM() async {
+    try {
+      // Request FCM permissions
+      NotificationSettings settings = await _firebaseMessaging
+          .requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+            provisional: false,
+          );
+
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        print('✅ FCM permission granted');
+      } else if (settings.authorizationStatus ==
+          AuthorizationStatus.provisional) {
+        print('⚠️ FCM provisional permission granted');
+      } else {
+        print('❌ FCM permission denied');
+        return;
+      }
+
+      // Get FCM token
+      _fcmToken = await _firebaseMessaging.getToken();
+      print('📱 FCM Token: $_fcmToken');
+
+      // Listen for token refresh
+      _firebaseMessaging.onTokenRefresh.listen((newToken) {
+        _fcmToken = newToken;
+        print('🔄 FCM Token refreshed: $newToken');
+        // TODO: Update token in Firestore
+      });
+
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('📨 Foreground message: ${message.notification?.title}');
+
+        if (message.notification != null) {
+          showNotification(
+            title: message.notification!.title ?? 'Thông báo',
+            body: message.notification!.body ?? '',
+            payload: message.data.toString(),
+          );
+        }
+      });
+
+      // Handle notification tap when app is in background
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        print('🔔 Notification opened app: ${message.notification?.title}');
+        // TODO: Navigate to specific screen based on message data
+      });
+
+      // Check if app was opened from a terminated state
+      RemoteMessage? initialMessage = await _firebaseMessaging
+          .getInitialMessage();
+      if (initialMessage != null) {
+        print(
+          '🚀 App opened from notification: ${initialMessage.notification?.title}',
+        );
+        // TODO: Handle initial message
+      }
+    } catch (e) {
+      print('❌ FCM initialization error: $e');
     }
   }
 
@@ -149,36 +234,83 @@ class NotificationService {
     }
   }
 
+  /// Save FCM token to Firestore for remote notifications
+  Future<void> saveFcmTokenToFirestore(String userId) async {
+    if (_fcmToken == null) {
+      print('⚠️ No FCM token to save');
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'fcmToken': _fcmToken,
+        'tokenUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('✅ FCM token saved to Firestore');
+    } catch (e) {
+      print('❌ Error saving FCM token: $e');
+    }
+  }
+
+  // ============================================
+  // Sensor-Specific Alert Methods
+  // ============================================
+
   Future<void> showGasAlert(int gasValue) async {
     await showNotification(
-      title: '⚠️ Cảnh báo Gas!',
-      body: 'Phát hiện nồng độ gas cao: $gasValue ppm',
+      title: '⚠️ Cảnh báo Gas nguy hiểm!',
+      body: 'Phát hiện nồng độ gas cao: $gasValue ppm. Hãy kiểm tra ngay!',
       payload: 'gas_alert',
       priority: NotificationPriority.max,
     );
   }
 
+  Future<void> showHighTemperatureAlert(double temperature) async {
+    await showNotification(
+      title: '🔥 Cảnh báo nhiệt độ cao!',
+      body:
+          'Nhiệt độ quá cao: ${temperature.toStringAsFixed(1)}°C. Hãy bật quạt hoặc điều hòa!',
+      payload: 'high_temp_alert',
+      priority: NotificationPriority.high,
+    );
+  }
+
+  Future<void> showLowTemperatureAlert(double temperature) async {
+    await showNotification(
+      title: '❄️ Cảnh báo nhiệt độ thấp!',
+      body:
+          'Nhiệt độ quá thấp: ${temperature.toStringAsFixed(1)}°C. Giữ ấm cơ thể!',
+      payload: 'low_temp_alert',
+      priority: NotificationPriority.high,
+    );
+  }
+
   Future<void> showRainAlert() async {
     await showNotification(
-      title: '🌧️ Cảnh báo mưa!',
-      body: 'Đang có mưa, cửa trần đã tự động đóng',
+      title: '🌧️ Cảnh báo mưa lớn!',
+      body: 'Đang có mưa, cửa trần đã tự động đóng để bảo vệ nhà',
       payload: 'rain_alert',
+      priority: NotificationPriority.high,
     );
   }
 
   Future<void> showLowSoilMoistureAlert() async {
     await showNotification(
       title: '🌱 Cảnh báo độ ẩm đất',
-      body: 'Độ ẩm đất thấp, cần tưới cây',
+      body: 'Độ ẩm đất thấp, cây cần được tưới nước',
       payload: 'soil_alert',
+      priority: NotificationPriority.normal,
     );
   }
 
   Future<void> showHighDustAlert(int dustValue) async {
     await showNotification(
-      title: '🫁 Cảnh báo bụi mịn',
-      body: 'Nồng độ bụi cao: $dustValue. Máy phun sương đã bật',
+      title: '🫁 Cảnh báo bụi mịn cao!',
+      body:
+          'Nồng độ bụi: $dustValue µg/m³. Không khí độc hại, hạn chế ra ngoài!',
       payload: 'dust_alert',
+      priority: NotificationPriority.max,
     );
   }
 

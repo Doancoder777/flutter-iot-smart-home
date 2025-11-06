@@ -108,7 +108,6 @@ class DustIndicatorWidget extends StatelessWidget {
           ),
 
           const SizedBox(height: 8), // ✅ Giảm từ 12 → 8
-
           // Hạt bụi + AQI
           Expanded(
             child: Stack(

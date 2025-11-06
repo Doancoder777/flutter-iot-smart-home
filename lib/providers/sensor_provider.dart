@@ -315,7 +315,21 @@ class SensorProvider extends ChangeNotifier {
           value = (value as num).toInt();
           break;
         case SensorDataType.bool:
-          value = value == true || value == 1 || value == '1';
+          // Convert to bool
+          bool boolValue = value == true || value == 1 || value == '1';
+
+          // 🔄 ĐẢO NGƯỢC CHỈ CHO MOTION SENSOR (IR Obstacle)
+          // IR sensor: LOW (0) = có vật = phát hiện, HIGH (1) = không có vật
+          if (sensor.sensorType?.name.toLowerCase().contains('motion') ==
+                  true ||
+              sensor.deviceCode.toLowerCase().contains('motion') ||
+              sensor.deviceCode.toLowerCase().contains('pir') ||
+              sensor.deviceCode.toLowerCase().contains('ir_')) {
+            value = !boolValue; // Đảo ngược: 0->true, 1->false
+            print('🔄 [IR SENSOR] Inverted logic: $value');
+          } else {
+            value = boolValue;
+          }
           break;
       }
 
@@ -335,6 +349,9 @@ class SensorProvider extends ChangeNotifier {
       );
 
       print('✅ [SENSOR] Firestore updated successfully!');
+
+      // 🔔 CHECK THRESHOLDS VÀ GỬI THÔNG BÁO
+      _checkSensorThresholds(sensor, value);
 
       // Real-time listener sẽ tự động update _userSensors
       // Nhưng để đảm bảo UI update ngay, ta cập nhật currentData
@@ -360,6 +377,126 @@ class SensorProvider extends ChangeNotifier {
       print('═══════════════════════════════════════════════════════\n');
     }
   }
+
+  /// 🔔 Kiểm tra ngưỡng cảm biến và gửi thông báo
+  void _checkSensorThresholds(UserSensor sensor, dynamic value) {
+    // Track thời gian gửi thông báo cuối để tránh spam
+    final now = DateTime.now();
+    final lastNotificationKey = '${sensor.id}_last_notification';
+
+    // 🔥 MOTION SENSOR: KHÔNG COOLDOWN - Gửi ngay mỗi khi phát hiện!
+    // Các sensor khác: Cooldown 5 phút để tránh spam
+    if (sensor.sensorTypeId != 'motion') {
+      // Kiểm tra đã gửi thông báo trong 5 phút gần đây chưa (cooldown)
+      if (_lastNotificationTimes.containsKey(lastNotificationKey)) {
+        final lastTime = _lastNotificationTimes[lastNotificationKey]!;
+        final difference = now.difference(lastTime);
+        if (difference.inMinutes < 5) {
+          print(
+            '⏰ [NOTIFICATION] Cooldown active for ${sensor.displayName} (${difference.inMinutes}min ago)',
+          );
+          return; // Skip để tránh spam
+        }
+      }
+    }
+
+    print('🔍 [NOTIFICATION] Checking thresholds for ${sensor.displayName}...');
+    print('   Type: ${sensor.sensorTypeId}');
+    print('   Value: $value');
+
+    bool shouldNotify = false;
+
+    // Kiểm tra từng loại cảm biến
+    switch (sensor.sensorTypeId) {
+      case 'gas':
+        if (value is int && value > 400) {
+          print('⚠️ [ALERT] Gas level DANGEROUS: $value ppm > 400 ppm');
+          _notificationService.showGasAlert(value);
+          shouldNotify = true;
+        }
+        break;
+
+      case 'temperature':
+        if (value is double || value is int) {
+          final temp = (value as num).toDouble();
+          if (temp > 35) {
+            print('🔥 [ALERT] Temperature TOO HIGH: ${temp}°C > 35°C');
+            _notificationService.showHighTemperatureAlert(temp);
+            shouldNotify = true;
+          } else if (temp < 18) {
+            print('❄️ [ALERT] Temperature TOO LOW: ${temp}°C < 18°C');
+            _notificationService.showLowTemperatureAlert(temp);
+            shouldNotify = true;
+          }
+        }
+        break;
+
+      case 'rain':
+        if (value is int && value > 60) {
+          print('🌧️ [ALERT] Heavy RAIN detected: $value% > 60%');
+          _notificationService.showRainAlert();
+          shouldNotify = true;
+        }
+        break;
+
+      case 'dust':
+        if (value is int && value > 150) {
+          print('🫁 [ALERT] Dust level UNHEALTHY: $value µg/m³ > 150 µg/m³');
+          _notificationService.showHighDustAlert(value);
+          shouldNotify = true;
+        }
+        break;
+
+      case 'soil_moisture':
+        if (value is int && value < 20) {
+          print('🌱 [ALERT] Soil moisture LOW: $value% < 20%');
+          _notificationService.showLowSoilMoistureAlert();
+          shouldNotify = true;
+        }
+        break;
+
+      case 'motion':
+        // 🚶 MOTION SENSOR: Gửi thông báo MỖI KHI phát hiện chuyển động
+        // Chỉ gửi khi CÓ CHUYỂN ĐỘNG (từ false → true)
+        // Không gửi khi vẫn đang true hoặc false → false
+        final previousValueKey = '${sensor.id}_motion_state';
+        final previousValue = _previousSensorValues[previousValueKey];
+        final isMotionDetected = (value == true || value == 1);
+        final wasMotionDetected = (previousValue == true || previousValue == 1);
+
+        if (isMotionDetected && !wasMotionDetected) {
+          // ✅ Gửi ngay khi chuyển từ NO MOTION → MOTION (KHÔNG COOLDOWN!)
+          print('🚶 [ALERT] Motion DETECTED! (state changed: false → true)');
+          print('📨 [MOTION] Sending push notification immediately (NO COOLDOWN)');
+          _notificationService.showMotionDetectedAlert();
+          shouldNotify = true;
+          _previousSensorValues[previousValueKey] = true; // Update state
+        } else if (isMotionDetected) {
+          print('👀 [SKIP] Motion still active, waiting for state change');
+        } else {
+          // Motion stopped, update state
+          _previousSensorValues[previousValueKey] = false;
+          print('🔄 [MOTION] Motion stopped, state reset to false');
+        }
+        break;
+    }
+
+    if (shouldNotify) {
+      _lastNotificationTimes[lastNotificationKey] = now;
+      print('✅ [NOTIFICATION] Alert sent for ${sensor.displayName}');
+      if (sensor.sensorTypeId == 'motion') {
+        print('🚶 [MOTION] Alert sent WITHOUT cooldown restriction');
+      }
+    } else {
+      print('✅ [NOTIFICATION] Value within safe range, no alert needed');
+    }
+  }
+
+  // Map để track thời gian gửi thông báo cuối (tránh spam)
+  final Map<String, DateTime> _lastNotificationTimes = {};
+
+  // Map để track trạng thái trước đó của sensor (để phát hiện thay đổi)
+  final Map<String, dynamic> _previousSensorValues = {};
 
   /// Cập nhật currentData từ user sensors (backward compatibility)
   void _updateCurrentDataFromSensors() {

@@ -10,23 +10,43 @@ import '../models/sensor_data.dart';
 /// 1. Device Control: "Bật đèn" → JSON control command
 /// 2. Sensor Query: "Nhiệt độ bao nhiêu?" → Trả lời bằng văn bản
 class AiVoiceService {
-  late final GenerativeModel _model;
+  GenerativeModel? _model;
+  bool _initialized = false;
 
   AiVoiceService() {
-    _model = GenerativeModel(
-      model: AiConfig.modelName,
-      apiKey: AiConfig.geminiApiKey,
-      generationConfig: GenerationConfig(
-        temperature: AiConfig.temperature,
-        maxOutputTokens: AiConfig.maxTokens,
-      ),
-      safetySettings: [
-        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.none),
-        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.none),
-        SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.none),
-        SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.none),
-      ],
-    );
+    _initialize();
+  }
+
+  /// Initialize model with API key from SharedPreferences
+  Future<void> _initialize() async {
+    try {
+      final apiKey = await AiConfig.getApiKey();
+      _model = GenerativeModel(
+        model: AiConfig.modelName,
+        apiKey: apiKey,
+        generationConfig: GenerationConfig(
+          temperature: AiConfig.temperature,
+          maxOutputTokens: AiConfig.maxTokens,
+        ),
+        safetySettings: [
+          SafetySetting(HarmCategory.harassment, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.none),
+        ],
+      );
+      _initialized = true;
+      print('✅ AI Voice Service initialized with API key');
+    } catch (e) {
+      print('❌ Error initializing AI Voice Service: $e');
+      _initialized = false;
+    }
+  }
+
+  /// Reinitialize model (e.g., after API key change)
+  Future<void> reinitialize() async {
+    _initialized = false;
+    await _initialize();
   }
 
   /// Parse voice command → CommandResult (Device Control hoặc Sensor Query)
@@ -56,6 +76,21 @@ class AiVoiceService {
     SensorData? sensorData,
   }) async {
     try {
+      // Wait for initialization if needed
+      if (!_initialized) {
+        await _initialize();
+      }
+
+      // Check if model is initialized
+      if (_model == null) {
+        print('❌ AI Voice Service not initialized');
+        return CommandResult(
+          success: false,
+          error: 'AI Service chưa được khởi tạo. Vui lòng kiểm tra API key.',
+          responseType: ResponseType.deviceControl,
+        );
+      }
+
       // 🎯 SMART PROMPT: Chỉ include sensor data nếu câu hỏi liên quan
       final needsSensorData = _isSensorQuery(voiceCommand);
       final effectiveSensorData = needsSensorData ? sensorData : null;
@@ -73,7 +108,7 @@ class AiVoiceService {
       );
 
       // Bước 2: Call Gemini API
-      final response = await _model
+      final response = await _model!
           .generateContent([Content.text(prompt)])
           .timeout(
             Duration(milliseconds: AiConfig.requestTimeout),
@@ -144,40 +179,79 @@ Thời gian cập nhật: ${_formatTime(sensorData.timestamp)}
         : '';
 
     return '''
-BẠN LÀ TRỢ LÝ NHÀ THÔNG MINH BẰNG GIỌNG NÓI - Hỗ trợ 2 CHỨC NĂNG:
-1. ⚡ ĐIỀU KHIỂN THIẾT BỊ (Device Control)
-2. 📊 TRẢ LỜI VỀ CẢM BIẾN (Sensor Query)
-
-═══════════════════════════════════════════════════════════════════
-🎯 PHÂN LOẠI CÂU LỆNH
-═══════════════════════════════════════════════════════════════════
-
-� SENSOR QUERY (Hỏi về cảm biến):
-Từ khóa: "bao nhiêu", "thế nào", "có ... không", "mấy độ", "nóng", "lạnh", "mát", "ẩm", "khô"
-
-Ví dụ:
-- "Nhiệt độ bao nhiêu?" → Trả lời: "Nhiệt độ hiện tại 28°C"
-- "Nhà tôi có nóng không?" → Phân tích nhiệt độ, trả lời "Mát" hoặc "Nóng"
-- "Độ ẩm thế nào?" → Trả lời: "Độ ẩm 65%, mức bình thường"
-- "Có mưa không?" → Trả lời: "Đang mưa" hoặc "Không mưa"
-- "Bụi có nhiều không?" → Phân tích PM2.5, trả lời mức độ
-- "Có người trong nhà không?" → Trả lời dựa trên cảm biến chuyển động
-
-⚡ DEVICE CONTROL (Điều khiển thiết bị):
-Từ khóa: "bật", "tắt", "mở", "đóng", "chỉnh", "tăng", "giảm"
-
-Ví dụ:
-- "Bật đèn" → JSON control
-- "Tắt quạt" → JSON control
-- "Mở cửa" → JSON control
+BẠN LÀ TRỢ LÝ NHÀ THÔNG MINH - Hiểu ngữ cảnh và suy luận thông minh.
 
 $sensorInfo
 
 ═══════════════════════════════════════════════════════════════════
-📋 DANH SÁCH THIẾT BỊ CÓ THỂ ĐIỀU KHIỂN
+🏠 DANH SÁCH THIẾT BỊ
 ═══════════════════════════════════════════════════════════════════
 
 $deviceList
+
+═══════════════════════════════════════════════════════════════════
+🧠 KHẢ NĂNG SUY LUẬN NGỮ CẢNH (QUAN TRỌNG!)
+═══════════════════════════════════════════════════════════════════
+
+KHÔNG CẦN người dùng kêu đúng tên thiết bị! Hãy SUY LUẬN từ ngữ cảnh:
+
+🔹 VỀ NHIỆT ĐỘ:
+- "nóng", "oi bức", "ngộp ngạt", "nực", "nóng quá", "oi" 
+  → Bật QUẠT (fan) mạnh nhất có (100%)
+  → Tìm thiết bị có type="fan" hoặc tên chứa "quạt"
+
+- "mát", "lạnh", "rét"
+  → Tắt quạt (set_value = 0)
+
+🔹 VỀ ẨM ĐỘ:
+- "ẩm ướt", "ẩm", "ướt át", "ẩm thấp", "quá ẩm"
+  → Bật QUẠT để khô (67%)
+  → Tìm thiết bị type="fan"
+
+- "hanh khô", "khô", "khan", "hanh", "khô hanh", "khô ráo", "thiếu ẩm", "không khí khô"
+  → Bật PHUN SƯƠNG (relay tên "phun sương" hoặc keyName="phun_suong")
+  → Tìm theo: tên chứa "phun", "sương", "mist", "humidifier", "tạo ẩm"
+  → Hoặc tắt quạt
+
+🔹 PHUN SƯƠNG TRỰC TIẾP:
+- "bật phun sương", "mở phun sương", "phun sương", "bật phun"
+  → Bật relay PHUN SƯƠNG (keyName="phun_suong")
+  → Action: turn_on
+
+- "tắt phun sương", "đóng phun sương", "tắt phun"
+  → Tắt relay PHUN SƯƠNG
+  → Action: turn_off
+
+- "bật tạo ẩm", "mở máy phun", "làm ẩm"
+  → Bật relay PHUN SƯƠNG
+
+🔹 VỀ ÁNH SÁNG:
+- "tối", "u ám", "không thấy", "tăm tối", "tối om"
+  → Bật ĐÈN (relay/light có tên "đèn")
+  → Ưu tiên đèn phòng khách
+
+- "sáng", "chói", "sáng quá"
+  → Tắt đèn
+
+🔹 VỀ THỜI TIẾT:
+- "mưa", "ướt", "trời mưa"
+  → Đóng CỬA/SERVO (value = 0)
+  → Tìm servo có tên "cửa", "mái", "phơi"
+
+- "nắng", "đẹp trời"
+  → Mở cửa (value = 180)
+
+🔹 CÁCH CHỌN THIẾT BỊ:
+1. Không bắt buộc phải có tên thiết bị trong câu lệnh
+2. Dựa vào ngữ cảnh để chọn: nóng → quạt, tối → đèn
+3. Ưu tiên thiết bị có tên phù hợp (phòng khách > bếp)
+4. Có thể chọn NHIỀU thiết bị cùng lúc nếu cần
+
+🔹 KẾT HỢP VỚI CẢM BIẾN:
+- Nhiệt độ > 30°C + "nóng" → Quạt 100%
+- Nhiệt độ 28-30°C + "nóng" → Quạt 67%
+- Độ ẩm < 40% + "khô" → Phun sương
+- Ánh sáng < 100 lux + "tối" → Bật đèn
 
 ═══════════════════════════════════════════════════════════════════
 ❓ CÂU LỆNH NGƯỜI DÙNG
@@ -306,35 +380,97 @@ QUY ƯỚC GIÁ TRỊ "value" VÀ HÀNH ĐỘNG MẶC ĐỊNH:
    - KHÔNG DÙNG turn_on/turn_off cho servo
    - Range: 0-180 degrees (chuẩn servo 180°)
 
-PHÂN TÍCH CÂU LỆNH:
-- "mở", "bật", "chạy", "sáng", "kích hoạt" → action = "turn_on" (RELAY, ĐÈN)
-- "tắt", "đóng", "dừng", "off", "tối" → action = "turn_off"
-- "chuyển", "đảo", "toggle" → action = "toggle"
-- "đặt", "điều chỉnh", "chỉnh", "quay", "xoay", "set" + SỐ → action = "set_value"
+═══════════════════════════════════════════════════════════════════
+🔍 TÌM THIẾT BỊ THEO NGỮ CẢNH (CRITICAL!)
+═══════════════════════════════════════════════════════════════════
+
+KHÔNG bắt buộc phải có TÊN CHÍNH XÁC! Tìm theo NGỮ NGHĨA:
+
+🔹 MOTOR BƠM NƯỚC:
+Câu nói: "hết nước", "thiếu nước", "cần nước", "bơm nước"
+→ Tìm thiết bị có tên chứa: "bơm", "pump", "motor", "nước", "water"
+→ Action: turn_on
+
+Câu nói: "đầy nước", "nhiều nước", "dư nước"
+→ Tìm thiết bị có tên chứa: "bơm", "pump", "motor", "nước"
+→ Action: turn_off
+
+🔹 DÀN PHƠI ĐỒ / MÁI CHE:
+Câu nói: "mưa", "ướt", "trời mưa", "sắp mưa"
+→ Tìm thiết bị có tên chứa: "phơi", "mái", "roof", "servo", "che"
+→ Action: set_value = 0 (đóng/thu về)
+
+Câu nói: "nắng", "đẹp trời", "khô ráo"
+→ Tìm thiết bị có tên chứa: "phơi", "mái", "roof"
+→ Action: set_value = 180 (mở/phơi)
+
+🔹 QUẠT:
+Câu nói: "nóng", "ngộp", "oi", "ẩm"
+→ Tìm thiết bị có tên chứa: "quạt", "fan", "gió"
+→ Action: set_value = 100 (mạnh) hoặc 67 (vừa)
+
+🔹 ĐÈN:
+Câu nói: "tối", "không thấy", "tăm tối", "sáng"
+→ Tìm thiết bị có tên chứa: "đèn", "light", "led", "sáng", "lamp"
+→ Action: turn_on / turn_off
+
+🔹 PHUN SƯƠNG (MÁY PHUN SƯƠNG / TẠO ẨM):
+Câu nói: "khô", "khô ráo", "thiếu ẩm", "phun", "phun sương", "sương", "mù", "tạo ẩm", "ẩm ướt", "làm mát"
+→ Tìm thiết bị có tên chứa: "phun sương", "phun", "sương", "mist", "humidifier", "tạo ẩm", "làm mát"
+→ Tìm theo keyName: "phun_suong"
+→ Action: turn_on / turn_off
+→ Ví dụ câu lệnh:
+  - "Bật phun sương" → turn_on
+  - "Tắt phun sương" → turn_off
+  - "Mở máy phun" → turn_on
+  - "Không khí khô quá, bật phun sương" → turn_on
+  - "Ẩm rồi, tắt phun sương" → turn_off
+
+🔹 LOGIC TÌM KIẾM:
+1. Tìm theo TỪ KHÓA trong tên (không cần khớp 100%)
+2. Tìm theo CHỨC NĂNG (bơm nước, phơi đồ, làm mát, phun sương, tạo ẩm)
+3. Tìm theo keyName (phun_suong, quat_phong_khach, etc.)
+4. Tìm theo TYPE nếu không có tên (relay, servo, fan)
+5. LUÔN tìm được thiết bị phù hợp, đừng bao giờ báo "không tìm thấy"
 
 ⚠️ ĐẶC BIỆT QUAN TRỌNG:
-- SERVO: LUÔN dùng "set_value" với góc cụ thể
-  → "Mở cửa" = set_value với value = 180 (KHÔNG DÙNG turn_on)
-  → "Đóng cửa" = set_value với value = 0 (KHÔNG DÙNG turn_off)
-- QUẠT: LUÔN LUÔN dùng "set_value", KHÔNG BAO GIỜ dùng turn_on/turn_off
-  → "Bật quạt" = set_value với value = 67
-  → "Tắt quạt" = set_value với value = 0 (KHÔNG DÙNG turn_off)
-  → "Quạt mạnh" = set_value với value = 100
-- RELAY: CHỈ dùng turn_on/turn_off (KHÔNG BAO GIỜ dùng set_value)
+- SERVO (phơi đồ): LUÔN dùng "set_value" 0 hoặc 180
+- QUẠT: LUÔN dùng "set_value" 0-100
+- RELAY (bơm): CHỈ dùng turn_on/turn_off
 
-TỪ ĐỒNG NGHĨA THIẾT BỊ:
-- "đèn", "light", "sáng", "chiếu sáng" → loại: light
-- "quạt", "fan", "gió" → loại: fan
-- "cửa", "cửa sổ", "window", "door", "cổng" → loại: servo hoặc relay
-- "rèm", "curtain", "mành" → loại: servo
-- "điều hòa", "AC", "máy lạnh" → loại: relay hoặc fan
-- "ổ cắm", "plug", "socket", "relay" → loại: relay
+═══════════════════════════════════════════════════════════════════
+🎯 CÁCH TRẢ VỀ device_key
+═══════════════════════════════════════════════════════════════════
 
-LOGIC CHỌN THIẾT BỊ:
-1. Nếu câu lệnh có TÊN PHÒNG → ưu tiên thiết bị trong phòng đó
-2. Nếu chỉ nói LOẠI THIẾT BỊ → chọn thiết bị đầu tiên cùng loại
-3. Nếu có TỪ KHÓA GẦN KHỚP → chọn thiết bị có tên chứa từ khóa
-4. CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH THÊM
+"device_key" PHẢI là keyName trong danh sách thiết bị.
+
+⚠️ QUAN TRỌNG: Tìm theo TÊN GẦN ĐÚNG, không cần chính xác 100%
+
+VÍ DỤ:
+- Câu: "hết nước" → Tìm thiết bị có tên chứa "bơm" hoặc "pump" hoặc "nước"
+  → device_key = "motor_bom_nuoc" (từ danh sách)
+
+- Câu: "trời mưa" → Tìm thiết bị có tên chứa "phơi" hoặc "mái" hoặc "roof"
+  → device_key = "dan_phoi_do" (từ danh sách)
+
+- Câu: "nóng quá" → Tìm thiết bị có tên chứa "quạt" hoặc "fan"
+  → device_key = "quat_phong_khach" (từ danh sách)
+
+- Câu: "bật phun sương" → Tìm thiết bị có keyName="phun_suong" hoặc tên chứa "phun sương"
+  → device_key = "phun_suong" (từ danh sách)
+
+- Câu: "khô quá" → Tìm thiết bị có tên chứa "phun", "sương", "tạo ẩm", "mist"
+  → device_key = "phun_suong" (từ danh sách)
+
+- Câu: "bật phun" → Tìm thiết bị có tên chứa "phun"
+  → device_key = "phun_suong" (từ danh sách)
+
+CÁCH TÌM KIẾM:
+1. So sánh TỪ KHÓA với name/keyName trong danh sách
+2. Tìm kiếm KHÔNG PHÂN BIỆT HOA THƯỜNG
+3. Tìm kiếm KHÔNG PHÂN BIỆT DẤU (bom = bơm)
+4. Chấp nhận PARTIAL MATCH (tên chứa từ khóa)
+5. LUÔN tìm được thiết bị phù hợp nhất
 
 VÍ DỤ CHI TIẾT (với MQTT format mapping):
 
@@ -406,6 +542,29 @@ Lệnh: "Mở mái che một nửa"
 → App gửi MQTT: {"angle": 90}
 → Arduino nhận: angle=90 → servo.write(90)
 
+📌 PHUN SƯƠNG / MÁY TẠO ẨM:
+Lệnh: "Bật phun sương"
+→ AI tìm theo: keyName="phun_suong" hoặc tên chứa "phun sương"
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_on", "value": null}
+→ App gửi MQTT: {"state": true} hoặc {"action": "turn_on"}
+→ Arduino nhận: Bật relay phun sương
+→ Arduino phản hồi: {"state": "ON", "timestamp": 12345678}
+
+Lệnh: "Tắt phun sương"
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_off", "value": null}
+→ App gửi MQTT: {"state": false}
+
+Lệnh: "Không khí khô quá"
+→ AI nhận biết: "khô" → cần "phun sương" hoặc "tạo ẩm"
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_on", "value": null}
+→ Tự động bật máy phun sương
+
+Lệnh: "Mở máy phun"
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_on", "value": null}
+
+Lệnh: "Bật tạo ẩm"
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_on", "value": null}
+
 📌 NÓI TẮT (FUZZY MATCHING):
 Lệnh: "Bật đèn ngủ" (có thiết bị "Đèn phòng ngủ")
 → AI Output: {"success": true, "device_key": "den_phong_ngu", "action": "turn_on", "value": null}
@@ -414,6 +573,10 @@ Lệnh: "Bật đèn ngủ" (có thiết bị "Đèn phòng ngủ")
 
 Lệnh: "Tắt quạt khách" (có thiết bị "Quạt phòng khách")
 → AI Output: {"success": true, "device_key": "quat_phong_khach", "action": "set_value", "value": 0}
+
+Lệnh: "Bật phun" (rút gọn của "phun sương")
+→ AI Output: {"success": true, "device_key": "phun_suong", "action": "turn_on", "value": null}
+→ AI tự động nhận diện "phun" ≈ "Phun sương"
 → App convert: 0% → 0/255
 → App gửi MQTT: {"speed": 0}
 
@@ -569,10 +732,12 @@ BẮT ĐẦU XỬ LÝ:
     ];
 
     final lowerCommand = command.toLowerCase().trim();
-    
+
     // Debug: In ra để check
     print('🔍 Checking if sensor query: "$lowerCommand"');
-    final matched = sensorKeywords.where((kw) => lowerCommand.contains(kw)).toList();
+    final matched = sensorKeywords
+        .where((kw) => lowerCommand.contains(kw))
+        .toList();
     if (matched.isNotEmpty) {
       print('   ✅ Matched keywords: $matched');
       return true;

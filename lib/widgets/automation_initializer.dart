@@ -35,8 +35,10 @@ class _AutomationInitializerState extends State<AutomationInitializer> {
       );
 
       _automationService!.initialize();
-      
-      print('✅ AutomationInitializer: Service initialized with real sensor data');
+
+      print(
+        '✅ AutomationInitializer: Service initialized with real sensor data',
+      );
     }
   }
 

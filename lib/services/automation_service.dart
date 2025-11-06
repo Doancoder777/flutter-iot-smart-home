@@ -24,24 +24,24 @@ class AutomationService {
     _evaluationTimer = Timer.periodic(Duration(seconds: 5), (_) {
       _evaluateRules();
     });
-    
+
     // ✅ Lắng nghe thay đổi sensor data
     sensorProvider.addListener(_evaluateRules);
-    
+
     print('✅ AutomationService: Initialized');
   }
 
   void _evaluateRules() {
     // ✅ BUILD SENSOR MAP từ SensorProvider với REAL sensor IDs
     final sensorDataMap = <String, dynamic>{};
-    
+
     for (var sensor in sensorProvider.userSensors) {
       if (sensor.isActive && sensor.lastValue != null) {
         // Dùng sensor ID làm key (VD: "sensor_1762005354206")
         sensorDataMap[sensor.id] = sensor.lastValue;
       }
     }
-    
+
     // Debug log (uncomment để debug)
     // print('📊 Automation: ${sensorDataMap.length} sensors available');
     // sensorDataMap.forEach((id, value) {
@@ -62,7 +62,9 @@ class AutomationService {
         // Rule vừa active → Thực thi ON actions
         print('═══════════════════════════════════════════════════');
         print('🟢 AUTOMATION TRIGGERED: "${rule.name}"');
-        print('📋 Conditions met, executing ${rule.startActions.length} actions...');
+        print(
+          '📋 Conditions met, executing ${rule.startActions.length} actions...',
+        );
         for (var action in rule.startActions) {
           _executeAction(action.deviceId, action);
         }

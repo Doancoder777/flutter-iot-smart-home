@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/device_provider.dart';
 import '../../providers/sensor_provider.dart';
 import '../../providers/automation_provider.dart';
+import '../settings/api_key_settings_screen.dart';
 
 /// Màn hình hồ sơ người dùng
 class ProfileScreen extends StatelessWidget {
@@ -108,6 +109,32 @@ class ProfileScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
+                _buildActionTile(
+                  icon: Icons.key,
+                  title: 'Cài đặt API Key (Gemini AI)',
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ApiKeySettingsScreen(),
+                      ),
+                    );
+
+                    // If API key was changed, show success message
+                    if (result == true && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '🔄 API key đã được cập nhật. AI Voice Service sẽ tự động reload.',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const Divider(height: 1),
                 _buildActionTile(
                   icon: Icons.lock,
                   title: 'Đổi mật khẩu',

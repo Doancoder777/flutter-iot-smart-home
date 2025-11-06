@@ -151,7 +151,8 @@ class HumidityDropletWidget extends StatelessWidget {
                       ),
                     ),
                     // Phần trăm ở giữa giọt nước
-                    Center( // ✅ Dùng Center để căn giữa hoàn toàn
+                    Center(
+                      // ✅ Dùng Center để căn giữa hoàn toàn
                       child: Text(
                         '${humidity.toInt()}%',
                         style: TextStyle(
@@ -195,9 +196,9 @@ class HumidityDropletWidget extends StatelessWidget {
 
           // Advice
           if (healthInfo.actionAdvice != null) ...[
-            const SizedBox(height: 6), // ✅ Giảm từ 8 → 6
+            const SizedBox(height: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: healthInfo.color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -208,15 +209,17 @@ class HumidityDropletWidget extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.lightbulb_outline,
-                    size: 16,
+                    size: 14,
                     color: healthInfo.color,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   Flexible(
                     child: Text(
                       healthInfo.actionAdvice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: healthInfo.color,
                         fontWeight: FontWeight.w600,
                       ),

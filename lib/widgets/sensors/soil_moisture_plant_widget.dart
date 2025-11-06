@@ -227,15 +227,24 @@ class SoilMoisturePlantWidget extends StatelessWidget {
                 children: [
                   Text(
                     'Khô',
-                    style: TextStyle(fontSize: 10, color: Colors.grey[600]), // ✅ Giảm từ 11 → 10
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ), // ✅ Giảm từ 11 → 10
                   ),
                   Text(
                     'Lý tưởng',
-                    style: TextStyle(fontSize: 10, color: Colors.grey[600]), // ✅ Giảm từ 11 → 10
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ), // ✅ Giảm từ 11 → 10
                   ),
                   Text(
                     'Ngập',
-                    style: TextStyle(fontSize: 10, color: Colors.grey[600]), // ✅ Giảm từ 11 → 10
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ), // ✅ Giảm từ 11 → 10
                   ),
                 ],
               ),

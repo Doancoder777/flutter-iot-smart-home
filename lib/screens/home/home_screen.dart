@@ -5,13 +5,14 @@ import '../../providers/sensor_provider.dart';
 import '../../providers/device_provider.dart';
 import '../../config/app_colors.dart';
 import '../../models/device_model.dart';
+import '../../models/sensor_data.dart';
 import '../../widgets/connection_status_badge.dart';
 import '../../widgets/voice_control_button.dart';
+import '../../widgets/sensors/weather_prediction_widget.dart';
 import '../../controllers/voice_controller.dart';
 import 'widgets/animated_sensor_card.dart';
 import 'widgets/device_quick_control.dart';
 import 'widgets/alert_banner.dart';
-import 'widgets/weather_widget.dart';
 import 'widgets/room_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -142,8 +143,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
             SizedBox(height: 16),
 
-            // Weather Widget
-            WeatherWidget(),
+            // ⭐ DỰ BÁO THỜI TIẾT THÔNG MINH
+            Consumer<SensorProvider>(
+              builder: (context, sensorProvider, child) {
+                final sensorData = SensorData(
+                  temperature: sensorProvider.temperature,
+                  humidity: sensorProvider.humidity,
+                  rain: sensorProvider.rain,
+                  light: sensorProvider.light,
+                  soilMoisture: sensorProvider.soilMoisture,
+                  gas: sensorProvider.gas,
+                  dust: sensorProvider.dust,
+                  motionDetected: sensorProvider.motionDetected,
+                  timestamp: DateTime.now(),
+                );
+
+                // ✅ BỎ SizedBox để card tự động mở rộng theo nội dung
+                return WeatherPredictionWidget(sensorData: sensorData);
+              },
+            ),
 
             SizedBox(height: 24),
 
@@ -218,7 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 return GridView.builder(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.85, // ✅ Giảm xuống để card cao hơn (tránh overflow)
+                    childAspectRatio:
+                        0.85, // ✅ Giảm xuống để card cao hơn (tránh overflow)
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                   ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sensor_provider.dart';
 import '../../providers/device_provider.dart';
+import '../../models/sensor_data.dart';
+import '../../widgets/sensors/weather_prediction_widget.dart';
 import 'widgets/statistics_card.dart';
 import 'widgets/energy_chart.dart';
 
@@ -21,6 +23,43 @@ class DashboardScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // ⭐ DỰ BÁO THỜI TIẾT
+            Consumer<SensorProvider>(
+              builder: (context, sensorProvider, child) {
+                try {
+                  final sensorData = SensorData(
+                    temperature: sensorProvider.temperature,
+                    humidity: sensorProvider.humidity,
+                    rain: sensorProvider.rain,
+                    light: sensorProvider.light,
+                    soilMoisture: sensorProvider.soilMoisture,
+                    gas: sensorProvider.gas,
+                    dust: sensorProvider.dust,
+                    motionDetected: sensorProvider.motionDetected,
+                    timestamp: DateTime.now(),
+                  );
+
+                  return SizedBox(
+                    height: 280, // ✅ Giới hạn chiều cao
+                    child: WeatherPredictionWidget(sensorData: sensorData),
+                  );
+                } catch (e) {
+                  // ⚠️ Debug: Hiển thị lỗi nếu có
+                  return Container(
+                    height: 100,
+                    color: Colors.red,
+                    child: Center(
+                      child: Text(
+                        'ERROR: $e',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 24),
+
             // Thống kê nhanh
             const Text(
               'Tổng quan',
